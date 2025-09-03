@@ -31,14 +31,12 @@ ALLOWED_HOSTS = []
 # Application definition
 
 INSTALLED_APPS = [
-    "django.contrib.admin",
-    "django.contrib.auth",
+    "django_tenants",
     "django.contrib.contenttypes",
+    "django.contrib.auth",
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
-    "accounts",
-    "inventory",
 ]
 
 MIDDLEWARE = [
@@ -53,23 +51,27 @@ MIDDLEWARE = [
 
 ROOT_URLCONF = "config.urls"
 
-TENANT_MODEL = "accounts.Client"
-TENANT_DOMAIN_MODEL = "accounts.Domain"
 
 DATABASE_ROUTERS = ("django_tenants.routers.TenantSyncRouter",)
 
 SHARED_APPS = (
     "django_tenants",
-    "accounts",  # tenantlarni saqlaydigan app
+    "accounts",
     "django.contrib.contenttypes",
     "django.contrib.auth",
+    "django.contrib.sessions",
+    "django.contrib.messages",
+    "django.contrib.staticfiles",
+    "django.contrib.admin",
 )
 
-TENANT_APPS = (
-    'inventory', 
-)
+TENANT_APPS = ("inventory",)
 
 INSTALLED_APPS = list(SHARED_APPS) + list(TENANT_APPS)
+
+
+TENANT_MODEL = "accounts.Client"
+TENANT_DOMAIN_MODEL = "accounts.Domain"
 
 TEMPLATES = [
     {
@@ -94,8 +96,12 @@ WSGI_APPLICATION = "config.wsgi.application"
 
 DATABASES = {
     "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
+        "ENGINE": "django_tenants.postgresql_backend",
+        "NAME": "inventory_db",
+        "USER": "postgres",
+        "PASSWORD": "12345678",
+        "HOST": "localhost",
+        "PORT": "5432",
     }
 }
 
