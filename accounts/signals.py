@@ -2,7 +2,7 @@ from django.contrib.auth.models import Group, Permission
 from django.contrib.contenttypes.models import ContentType
 from django.db.models.signals import post_migrate
 from django.dispatch import receiver
-from inventory.models import Product, Order
+# from inventory.models import Product, Order
 
 
 @receiver(post_migrate)

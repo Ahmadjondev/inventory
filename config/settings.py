@@ -11,26 +11,38 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 from pathlib import Path
+import os
+from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Load environment variables from .env at project root (if present)
+env_path = BASE_DIR / ".env"
+if env_path.exists():
+    load_dotenv(env_path)
 
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = "django-insecure-zzd9dehy49cbbvm$5%ko$nq9)q3bax7lq#fx&0br)(&!lskp3b"
+# SECRET_KEY: prefer environment variable, fall back to existing insecure default
+SECRET_KEY = os.getenv(
+    "SECRET_KEY",
+    "django-insecure-zzd9dehy49cbbvm$5%ko$nq9)q3bax7lq#fx&0br)(&!lskp3b",
+)
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+# DEBUG and allowed hosts
+DEBUG = os.getenv("DEBUG", "True").lower() in ("1", "true", "yes")
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "0.0.0.0,localhost,127.0.0.1").split(",")
 
 
 # Application definition
 
-INSTALLED_APPS = [
+INSTALLED_APPS = [  # temporary list before SHARED_APPS composition (kept for clarity)
     "django_tenants",
     "django.contrib.contenttypes",
     "django.contrib.auth",
@@ -63,6 +75,9 @@ SHARED_APPS = (
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "django.contrib.admin",
+    "rest_framework",
+    "rest_framework_simplejwt",
+    "drf_spectacular",
 )
 
 TENANT_APPS = ("inventory",)
@@ -96,12 +111,14 @@ WSGI_APPLICATION = "config.wsgi.application"
 
 DATABASES = {
     "default": {
-        "ENGINE": "django_tenants.postgresql_backend",
-        "NAME": "inventory_db",
-        "USER": "postgres",
-        "PASSWORD": "12345678",
-        "HOST": "localhost",
-        "PORT": "5432",
+        "ENGINE": os.getenv(
+            "DB_ENGINE", "django_tenants.postgresql_backend"
+        ),
+        "NAME": os.getenv("DB_NAME", "inventory_db"),
+        "USER": os.getenv("DB_USER", "postgres"),
+        "PASSWORD": os.getenv("DB_PASSWORD", "12345678"),
+        "HOST": os.getenv("DB_HOST", "db"),
+        "PORT": os.getenv("DB_PORT", "5432"),
     }
 }
 
@@ -146,3 +163,60 @@ STATIC_URL = "static/"
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# Custom user model
+AUTH_USER_MODEL = "accounts.User"
+
+# DRF / JWT configuration
+REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": (
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
+    ),
+    "DEFAULT_PERMISSION_CLASSES": (
+        "rest_framework.permissions.IsAuthenticated",
+    ),
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+}
+
+from datetime import timedelta
+
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(
+        seconds=int(os.getenv("SIMPLE_JWT_ACCESS_TOKEN_LIFETIME", 3600))
+    ),
+    "REFRESH_TOKEN_LIFETIME": timedelta(
+        seconds=int(os.getenv("SIMPLE_JWT_REFRESH_TOKEN_LIFETIME", 86400))
+    ),
+    "ROTATE_REFRESH_TOKENS": False,
+    "BLACKLIST_AFTER_ROTATION": False,
+    "AUTH_HEADER_TYPES": ("Bearer",),
+}
+
+# drf-spectacular OpenAPI settings
+SPECTACULAR_SETTINGS = {
+    "TITLE": "Inventory Management API",
+    "DESCRIPTION": "Multi-tenant inventory management with products, parts, warehouses and stock movements.",
+    "VERSION": "1.0.0",
+    "SERVE_INCLUDE_SCHEMA": False,
+    "SCHEMA_PATH_PREFIX": r"/api",
+    "COMPONENT_SPLIT_REQUEST": True,
+    "SORT_OPERATIONS": True,
+    "SWAGGER_UI_SETTINGS": {
+        "deepLinking": True,
+        "displayRequestDuration": True,
+    },
+    "TAGS": [
+        {"name": "auth", "description": "Authentication endpoints"},
+        {"name": "users", "description": "User management"},
+        {"name": "suppliers", "description": "Suppliers"},
+        {"name": "products", "description": "Products & splitting"},
+        {"name": "warehouses", "description": "Warehouse CRUD"},
+        {"name": "stocks", "description": "Current stock levels"},
+        {"name": "stock-movements", "description": "Inbound / Outbound / Transfer / Loss"},
+    ],
+}
+
+# Email backend
+EMAIL_BACKEND = os.getenv(
+    "EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend"
+)
