@@ -1,0 +1,94 @@
+{% extends 'manager/base.html' %}
+
+{% block title %}Subscription Plans{% endblock %}
+
+{% block content %}
+<div class="mb-6 flex items-center justify-between">
+    <div>
+        <h2 class="text-3xl font-bold text-gray-900">Subscription Plans</h2>
+        <p class="text-gray-600 mt-1">Manage pricing plans</p>
+    </div>
+    <a href="{% url 'manager:plan_create' %}" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium">
+        <i class="fas fa-plus mr-2"></i> New Plan
+    </a>
+</div>
+
+<div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+    {% for plan in plans %}
+    <div class="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-xl transition">
+        <div class="p-6 {% if plan.plan_type == 'basic' %}bg-blue-50{% elif plan.plan_type == 'pro' %}bg-purple-50{% else %}bg-yellow-50{% endif %}">
+            <h3 class="text-2xl font-bold text-gray-900">{{ plan.name }}</h3>
+            <div class="mt-4">
+                <span class="text-4xl font-bold text-gray-900">${{ plan.price_monthly }}</span>
+                <span class="text-gray-600">/month</span>
+            </div>
+            <p class="text-gray-600 mt-2">${{ plan.price_yearly }}/year</p>
+        </div>
+        
+        <div class="p-6">
+            <p class="text-gray-700 mb-4">{{ plan.description|default:"No description" }}</p>
+            
+            <div class="space-y-2 mb-6">
+                <div class="flex items-center text-sm">
+                    <i class="fas fa-check text-green-600 mr-2"></i>
+                    <span>{{ plan.max_users }} users</span>
+                </div>
+                <div class="flex items-center text-sm">
+                    <i class="fas fa-check text-green-600 mr-2"></i>
+                    <span>{{ plan.max_products }} products</span>
+                </div>
+                <div class="flex items-center text-sm">
+                    <i class="fas fa-check text-green-600 mr-2"></i>
+                    <span>{{ plan.max_warehouses }} warehouses</span>
+                </div>
+                <div class="flex items-center text-sm">
+                    <i class="fas fa-check text-green-600 mr-2"></i>
+                    <span>{{ plan.max_branches }} branches</span>
+                </div>
+                {% if plan.has_advanced_reporting %}
+                <div class="flex items-center text-sm">
+                    <i class="fas fa-check text-green-600 mr-2"></i>
+                    <span>Advanced Reporting</span>
+                </div>
+                {% endif %}
+                {% if plan.has_api_access %}
+                <div class="flex items-center text-sm">
+                    <i class="fas fa-check text-green-600 mr-2"></i>
+                    <span>API Access</span>
+                </div>
+                {% endif %}
+                {% if plan.has_offline_support %}
+                <div class="flex items-center text-sm">
+                    <i class="fas fa-check text-green-600 mr-2"></i>
+                    <span>Offline Support</span>
+                </div>
+                {% endif %}
+            </div>
+            
+            <div class="flex items-center justify-between">
+                <span class="inline-flex px-3 py-1 text-xs font-semibold rounded-full
+                    {% if plan.is_active %}bg-green-100 text-green-800{% else %}bg-red-100 text-red-800{% endif %}">
+                    {% if plan.is_active %}Active{% else %}Inactive{% endif %}
+                </span>
+                <div class="flex space-x-2">
+                    <a href="{% url 'manager:plan_edit' plan.pk %}" 
+                       class="text-blue-600 hover:text-blue-800">
+                        <i class="fas fa-edit"></i>
+                    </a>
+                    <a href="{% url 'manager:plan_delete' plan.pk %}" 
+                       class="text-red-600 hover:text-red-800">
+                        <i class="fas fa-trash"></i>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% empty %}
+    <div class="col-span-3 bg-white rounded-lg shadow-md p-12 text-center">
+        <i class="fas fa-tags text-6xl text-gray-300 mb-4"></i>
+        <p class="text-gray-500">No subscription plans created yet</p>
+    </div>
+    {% endfor %}
+</div>
+
+{% endblock %}

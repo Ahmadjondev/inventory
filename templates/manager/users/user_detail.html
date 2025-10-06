@@ -1,0 +1,116 @@
+{% extends 'manager/base.html' %}
+
+{% block title %}{{ user_obj.username }}{% endblock %}
+
+{% block content %}
+<div class="mb-6 flex items-center justify-between">
+    <div>
+        <h2 class="text-3xl font-bold text-gray-900">{{ user_obj.username }}</h2>
+        <p class="text-gray-600 mt-1">User Details</p>
+    </div>
+    <div class="flex space-x-3">
+        <a href="{% url 'manager:user_edit' user_obj.pk %}" 
+           class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium">
+            <i class="fas fa-edit mr-2"></i> Edit
+        </a>
+        <a href="{% url 'manager:user_delete' user_obj.pk %}" 
+           class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-medium">
+            <i class="fas fa-trash mr-2"></i> Delete
+        </a>
+    </div>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <div class="lg:col-span-2 bg-white rounded-lg shadow-md p-6">
+        <h3 class="text-xl font-bold text-gray-900 mb-4">
+            <i class="fas fa-user text-blue-600 mr-2"></i> User Information
+        </h3>
+        <div class="grid grid-cols-2 gap-4">
+            <div>
+                <p class="text-sm text-gray-600">Username</p>
+                <p class="text-lg font-semibold text-gray-900">{{ user_obj.username }}</p>
+            </div>
+            <div>
+                <p class="text-sm text-gray-600">Email</p>
+                <p class="text-lg font-semibold text-gray-900">{{ user_obj.email }}</p>
+            </div>
+            <div>
+                <p class="text-sm text-gray-600">First Name</p>
+                <p class="text-lg font-semibold text-gray-900">{{ user_obj.first_name|default:"N/A" }}</p>
+            </div>
+            <div>
+                <p class="text-sm text-gray-600">Last Name</p>
+                <p class="text-lg font-semibold text-gray-900">{{ user_obj.last_name|default:"N/A" }}</p>
+            </div>
+            <div>
+                <p class="text-sm text-gray-600">Phone</p>
+                <p class="text-lg font-semibold text-gray-900">{{ user_obj.phone|default:"N/A" }}</p>
+            </div>
+            <div>
+                <p class="text-sm text-gray-600">Role</p>
+                <span class="inline-flex px-3 py-1 text-sm font-semibold rounded-full
+                    {% if user_obj.role == 'superadmin' %}bg-red-100 text-red-800
+                    {% elif user_obj.role == 'admin' %}bg-blue-100 text-blue-800
+                    {% else %}bg-gray-100 text-gray-800{% endif %}">
+                    {{ user_obj.get_role_display }}
+                </span>
+            </div>
+        </div>
+    </div>
+
+    <div class="space-y-6">
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <h3 class="text-lg font-bold text-gray-900 mb-4">
+                <i class="fas fa-info-circle text-green-600 mr-2"></i> Status
+            </h3>
+            <div class="space-y-3">
+                <div>
+                    <p class="text-sm text-gray-600">Account Status</p>
+                    {% if user_obj.is_active %}
+                    <span class="inline-flex px-3 py-1 text-sm font-semibold rounded-full bg-green-100 text-green-800">
+                        <i class="fas fa-check-circle mr-1"></i> Active
+                    </span>
+                    {% else %}
+                    <span class="inline-flex px-3 py-1 text-sm font-semibold rounded-full bg-red-100 text-red-800">
+                        <i class="fas fa-times-circle mr-1"></i> Inactive
+                    </span>
+                    {% endif %}
+                </div>
+                <div>
+                    <p class="text-sm text-gray-600">Staff Status</p>
+                    {% if user_obj.is_staff %}
+                    <span class="text-green-600"><i class="fas fa-check"></i> Yes</span>
+                    {% else %}
+                    <span class="text-gray-600"><i class="fas fa-times"></i> No</span>
+                    {% endif %}
+                </div>
+                <div>
+                    <p class="text-sm text-gray-600">Superuser</p>
+                    {% if user_obj.is_superuser %}
+                    <span class="text-green-600"><i class="fas fa-check"></i> Yes</span>
+                    {% else %}
+                    <span class="text-gray-600"><i class="fas fa-times"></i> No</span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <h3 class="text-lg font-bold text-gray-900 mb-4">
+                <i class="fas fa-clock text-gray-600 mr-2"></i> Timeline
+            </h3>
+            <div class="space-y-3">
+                <div>
+                    <p class="text-sm text-gray-600">Joined</p>
+                    <p class="font-semibold text-gray-900">{{ user_obj.date_joined|date:"M d, Y H:i" }}</p>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-600">Last Login</p>
+                    <p class="font-semibold text-gray-900">{{ user_obj.last_login|date:"M d, Y H:i"|default:"Never" }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

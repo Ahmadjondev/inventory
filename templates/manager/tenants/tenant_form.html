@@ -1,0 +1,100 @@
+{% extends 'manager/base.html' %}
+
+{% block title %}{{ action }} Tenant{% endblock %}
+
+{% block content %}
+<div class="mb-6">
+    <h2 class="text-3xl font-bold text-gray-900">{{ action }} Tenant</h2>
+    <p class="text-gray-600 mt-1">{% if tenant %}Edit tenant information{% else %}Create a new tenant account{% endif %}</p>
+</div>
+
+<div class="bg-white rounded-lg shadow-md p-8 max-w-3xl">
+    <form method="post">
+        {% csrf_token %}
+        
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">
+                    Tenant Name <span class="text-red-500">*</span>
+                </label>
+                <input type="text" name="name" value="{% if tenant %}{{ tenant.name }}{% endif %}" 
+                       required class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+            </div>
+            
+            {% if not tenant %}
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">
+                    Schema Name <span class="text-red-500">*</span>
+                </label>
+                <input type="text" name="schema_name" required
+                       placeholder="e.g., tenant1" 
+                       class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                <p class="text-xs text-gray-500 mt-1">Lowercase letters and numbers only, no spaces</p>
+            </div>
+            {% endif %}
+            
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Email</label>
+                <input type="email" name="email" value="{% if tenant %}{{ tenant.email }}{% endif %}"
+                       class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+            </div>
+            
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Phone</label>
+                <input type="text" name="phone" value="{% if tenant %}{{ tenant.phone }}{% endif %}"
+                       class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+            </div>
+            
+            {% if not tenant %}
+            <div class="md:col-span-2">
+                <label class="block text-sm font-medium text-gray-700 mb-2">
+                    Domain <span class="text-red-500">*</span>
+                </label>
+                <input type="text" name="domain" required
+                       placeholder="e.g., tenant1.localhost" 
+                       class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                <p class="text-xs text-gray-500 mt-1">The domain for accessing this tenant</p>
+            </div>
+            {% endif %}
+            
+            <div class="md:col-span-2">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Address</label>
+                <textarea name="address" rows="3" 
+                          class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">{% if tenant %}{{ tenant.address }}{% endif %}</textarea>
+            </div>
+            
+            {% if tenant %}
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Max Users</label>
+                <input type="number" name="max_users" value="{{ tenant.max_users }}" min="1"
+                       class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+            </div>
+            
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Max Products</label>
+                <input type="number" name="max_products" value="{{ tenant.max_products }}" min="1"
+                       class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+            </div>
+            
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Max Warehouses</label>
+                <input type="number" name="max_warehouses" value="{{ tenant.max_warehouses }}" min="1"
+                       class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+            </div>
+            {% endif %}
+        </div>
+        
+        <div class="mt-8 flex items-center justify-end space-x-4">
+            <a href="{% if tenant %}{% url 'manager:tenant_detail' tenant.pk %}{% else %}{% url 'manager:tenant_list' %}{% endif %}" 
+               class="px-6 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium transition">
+                Cancel
+            </a>
+            <button type="submit" 
+                    class="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition">
+                <i class="fas fa-save mr-2"></i> {{ action }} Tenant
+            </button>
+        </div>
+    </form>
+</div>
+
+{% endblock %}

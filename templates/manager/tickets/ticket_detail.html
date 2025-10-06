@@ -1,0 +1,11 @@
+{% extends 'manager/base.html' %}
+{% block title %}Ticket Detail{% endblock %}
+{% block content %}
+<h2 class="text-3xl font-bold mb-6">Ticket: {{ ticket.ticket_number }}</h2>
+<div class="bg-white rounded-lg shadow-md p-6">
+    <p><strong>Subject:</strong> {{ ticket.subject }}</p>
+    <p><strong>Status:</strong> {{ ticket.get_status_display }}</p>
+    <p><strong>Priority:</strong> {{ ticket.get_priority_display }}</p>
+    <p class="mt-4">{{ ticket.description }}</p>
+</div>
+{% endblock %}

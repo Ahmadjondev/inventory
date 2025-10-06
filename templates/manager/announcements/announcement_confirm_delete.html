@@ -1,0 +1,15 @@
+{% extends 'manager/base.html' %}
+{% block title %}Delete Announcement{% endblock %}
+{% block content %}
+<div class="max-w-2xl mx-auto bg-white rounded-lg shadow-md p-8">
+    <h2 class="text-2xl font-bold mb-4">Delete Announcement</h2>
+    <p class="mb-6">Are you sure you want to delete "{{ announcement.title }}"?</p>
+    <form method="post">
+        {% csrf_token %}
+        <div class="flex justify-end space-x-4">
+            <a href="{% url 'manager:announcement_list' %}" class="px-6 py-2 border rounded-lg">Cancel</a>
+            <button type="submit" class="px-6 py-2 bg-red-600 text-white rounded-lg">Delete</button>
+        </div>
+    </form>
+</div>
+{% endblock %}

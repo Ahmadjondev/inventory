@@ -1,0 +1,10 @@
+{% extends 'manager/base.html' %}
+{% block title %}Invoice Detail{% endblock %}
+{% block content %}
+<h2 class="text-3xl font-bold mb-6">Invoice Details</h2>
+<div class="bg-white rounded-lg shadow-md p-6">
+    <p><strong>Invoice:</strong> {{ invoice.invoice_number }}</p>
+    <p><strong>Amount:</strong> ${{ invoice.amount }}</p>
+    <p><strong>Status:</strong> {{ invoice.get_status_display }}</p>
+</div>
+{% endblock %}

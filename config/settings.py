@@ -37,7 +37,10 @@ SECRET_KEY = os.getenv(
 # DEBUG and allowed hosts
 DEBUG = os.getenv("DEBUG", "True").lower() in ("1", "true", "yes")
 
-ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "0.0.0.0,localhost,127.0.0.1").split(",")
+ALLOWED_HOSTS = os.getenv(
+    "ALLOWED_HOSTS", "0.0.0.0,localhost,127.0.0.1,.localhost,admin.localhost"
+).split(",")
+# Note: .localhost allows wildcard subdomains like demo.localhost, demo123.localhost, admin.localhost, etc.
 
 
 # Application definition
@@ -52,6 +55,9 @@ INSTALLED_APPS = [  # temporary list before SHARED_APPS composition (kept for cl
 ]
 
 MIDDLEWARE = [
+    "manager.middleware.AdminSubdomainMiddleware",  # Must be first! Handles admin subdomain
+    "config.tenant_middleware.CustomTenantMiddleware",  # Custom tenant resolution (respects skip_tenant_check)
+    "accounts.middleware.StrictTenantMiddleware",  # Enforce strict domain checking
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -69,6 +75,7 @@ DATABASE_ROUTERS = ("django_tenants.routers.TenantSyncRouter",)
 SHARED_APPS = (
     "django_tenants",
     "accounts",
+    "manager",  # Admin panel app
     "django.contrib.contenttypes",
     "django.contrib.auth",
     "django.contrib.sessions",
@@ -88,10 +95,17 @@ INSTALLED_APPS = list(SHARED_APPS) + list(TENANT_APPS)
 TENANT_MODEL = "accounts.Client"
 TENANT_DOMAIN_MODEL = "accounts.Domain"
 
+# Public schema settings (for non-tenant specific data)
+PUBLIC_SCHEMA_NAME = "public"
+PUBLIC_SCHEMA_URLCONF = "config.urls"  # URLs available on the public schema
+
+# Strict domain checking - reject requests to non-existent domains
+SHOW_PUBLIC_IF_NO_TENANT_FOUND = False  # Set to True if you want a fallback public site
+
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [],
+        "DIRS": [BASE_DIR / "templates"],
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
@@ -111,9 +125,7 @@ WSGI_APPLICATION = "config.wsgi.application"
 
 DATABASES = {
     "default": {
-        "ENGINE": os.getenv(
-            "DB_ENGINE", "django_tenants.postgresql_backend"
-        ),
+        "ENGINE": os.getenv("DB_ENGINE", "django_tenants.postgresql_backend"),
         "NAME": os.getenv("DB_NAME", "inventory_db"),
         "USER": os.getenv("DB_USER", "postgres"),
         "PASSWORD": os.getenv("DB_PASSWORD", "12345678"),
@@ -158,6 +170,18 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
 STATIC_URL = "static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"
+
+# Additional locations of static files
+STATICFILES_DIRS = [
+    BASE_DIR / "static",
+]
+
+# Static files finders
+STATICFILES_FINDERS = [
+    "django.contrib.staticfiles.finders.FileSystemFinder",
+    "django.contrib.staticfiles.finders.AppDirectoriesFinder",
+]
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
@@ -167,14 +191,17 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 # Custom user model
 AUTH_USER_MODEL = "accounts.User"
 
+# Authentication URLs
+LOGIN_URL = "/auth/login/"
+LOGIN_REDIRECT_URL = "/"
+LOGOUT_REDIRECT_URL = "/auth/login/"
+
 # DRF / JWT configuration
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
         "rest_framework_simplejwt.authentication.JWTAuthentication",
     ),
-    "DEFAULT_PERMISSION_CLASSES": (
-        "rest_framework.permissions.IsAuthenticated",
-    ),
+    "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
 }
 
@@ -194,8 +221,8 @@ SIMPLE_JWT = {
 
 # drf-spectacular OpenAPI settings
 SPECTACULAR_SETTINGS = {
-    "TITLE": "Inventory Management API",
-    "DESCRIPTION": "Multi-tenant inventory management with products, parts, warehouses and stock movements.",
+    "TITLE": "Multi-Tenant SaaS POS API",
+    "DESCRIPTION": "Comprehensive multi-tenant POS system with inventory management, subscriptions, and billing.",
     "VERSION": "1.0.0",
     "SERVE_INCLUDE_SCHEMA": False,
     "SCHEMA_PATH_PREFIX": r"/api",
@@ -206,13 +233,27 @@ SPECTACULAR_SETTINGS = {
         "displayRequestDuration": True,
     },
     "TAGS": [
+        {"name": "tenants", "description": "Tenant (Store/Branch) management"},
+        {"name": "users", "description": "User management and roles"},
+        {"name": "subscriptions", "description": "Subscription plans and management"},
+        {"name": "payments", "description": "Payment processing and history"},
+        {"name": "platform", "description": "Platform-level SuperAdmin endpoints"},
         {"name": "auth", "description": "Authentication endpoints"},
-        {"name": "users", "description": "User management"},
-        {"name": "suppliers", "description": "Suppliers"},
+        {"name": "suppliers", "description": "Supplier management"},
         {"name": "products", "description": "Products & splitting"},
         {"name": "warehouses", "description": "Warehouse CRUD"},
         {"name": "stocks", "description": "Current stock levels"},
-        {"name": "stock-movements", "description": "Inbound / Outbound / Transfer / Loss"},
+        {
+            "name": "stock-movements",
+            "description": "Inbound / Outbound / Transfer / Loss",
+        },
+        {"name": "customers", "description": "Customer management"},
+        {"name": "vehicles", "description": "Vehicle management"},
+        {"name": "service-catalog", "description": "Service catalog"},
+        {"name": "service-orders", "description": "Service orders"},
+        {"name": "expenses", "description": "Expense tracking"},
+        {"name": "sales", "description": "Sales and POS operations"},
+        {"name": "reports", "description": "Reporting and analytics"},
     ],
 }
 

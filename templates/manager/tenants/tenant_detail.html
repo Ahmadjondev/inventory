@@ -1,0 +1,204 @@
+{% extends 'manager/base.html' %}
+
+{% block title %}{{ tenant.name }}{% endblock %}
+
+{% block content %}
+<div class="mb-6 flex items-center justify-between">
+    <div>
+        <h2 class="text-3xl font-bold text-gray-900">{{ tenant.name }}</h2>
+        <p class="text-gray-600 mt-1">Tenant Details</p>
+    </div>
+    <div class="flex space-x-3">
+        <a href="{% url 'manager:tenant_edit' tenant.pk %}" 
+           class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition">
+            <i class="fas fa-edit mr-2"></i> Edit
+        </a>
+        {% if tenant.status == 'active' or tenant.status == 'trial' %}
+        <a href="{% url 'manager:tenant_suspend' tenant.pk %}" 
+           class="bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded-lg font-medium transition">
+            <i class="fas fa-pause mr-2"></i> Suspend
+        </a>
+        {% else %}
+        <a href="{% url 'manager:tenant_activate' tenant.pk %}" 
+           class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition">
+            <i class="fas fa-play mr-2"></i> Activate
+        </a>
+        {% endif %}
+        <a href="{% url 'manager:tenant_delete' tenant.pk %}" 
+           class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-medium transition">
+            <i class="fas fa-trash mr-2"></i> Delete
+        </a>
+    </div>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <!-- Main Info -->
+    <div class="lg:col-span-2 space-y-6">
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <h3 class="text-xl font-bold text-gray-900 mb-4">
+                <i class="fas fa-info-circle text-blue-600 mr-2"></i> Tenant Information
+            </h3>
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <p class="text-sm text-gray-600">Schema Name</p>
+                    <p class="text-lg font-semibold text-gray-900 font-mono">{{ tenant.schema_name }}</p>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-600">Status</p>
+                    <span class="inline-flex px-3 py-1 text-sm font-semibold rounded-full mt-1
+                        {% if tenant.status == 'active' %}bg-green-100 text-green-800
+                        {% elif tenant.status == 'trial' %}bg-blue-100 text-blue-800
+                        {% elif tenant.status == 'suspended' %}bg-red-100 text-red-800
+                        {% else %}bg-gray-100 text-gray-800{% endif %}">
+                        {{ tenant.get_status_display }}
+                    </span>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-600">Email</p>
+                    <p class="text-lg font-semibold text-gray-900">{{ tenant.email|default:"N/A" }}</p>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-600">Phone</p>
+                    <p class="text-lg font-semibold text-gray-900">{{ tenant.phone|default:"N/A" }}</p>
+                </div>
+                <div class="col-span-2">
+                    <p class="text-sm text-gray-600">Address</p>
+                    <p class="text-lg font-semibold text-gray-900">{{ tenant.address|default:"N/A" }}</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Domains -->
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <h3 class="text-xl font-bold text-gray-900 mb-4">
+                <i class="fas fa-globe text-green-600 mr-2"></i> Domains
+            </h3>
+            <div class="space-y-2">
+                {% for domain in domains %}
+                <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <div class="flex items-center space-x-3">
+                        <i class="fas fa-link text-gray-400"></i>
+                        <span class="font-mono text-gray-900">{{ domain.domain }}</span>
+                        {% if domain.is_primary %}
+                        <span class="px-2 py-1 bg-blue-100 text-blue-800 text-xs font-semibold rounded">Primary</span>
+                        {% endif %}
+                    </div>
+                </div>
+                {% empty %}
+                <p class="text-gray-500 text-center py-4">No domains configured</p>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Recent Invoices -->
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <h3 class="text-xl font-bold text-gray-900 mb-4">
+                <i class="fas fa-file-invoice text-purple-600 mr-2"></i> Recent Invoices
+            </h3>
+            <div class="space-y-2">
+                {% for invoice in recent_invoices %}
+                <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <div>
+                        <p class="font-semibold text-gray-900">{{ invoice.invoice_number }}</p>
+                        <p class="text-sm text-gray-600">{{ invoice.created_at|date:"M d, Y" }}</p>
+                    </div>
+                    <div class="text-right">
+                        <p class="font-bold text-gray-900">${{ invoice.amount }}</p>
+                        <span class="text-xs px-2 py-1 rounded-full
+                            {% if invoice.status == 'paid' %}bg-green-100 text-green-800
+                            {% elif invoice.status == 'pending' %}bg-yellow-100 text-yellow-800
+                            {% else %}bg-red-100 text-red-800{% endif %}">
+                            {{ invoice.get_status_display }}
+                        </span>
+                    </div>
+                </div>
+                {% empty %}
+                <p class="text-gray-500 text-center py-4">No invoices yet</p>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Sidebar -->
+    <div class="space-y-6">
+        <!-- Subscription Info -->
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <h3 class="text-lg font-bold text-gray-900 mb-4">
+                <i class="fas fa-file-contract text-blue-600 mr-2"></i> Subscription
+            </h3>
+            {% if subscription %}
+            <div class="space-y-3">
+                <div>
+                    <p class="text-sm text-gray-600">Plan</p>
+                    <p class="text-lg font-semibold text-gray-900">{{ subscription.plan.name }}</p>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-600">Status</p>
+                    <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full
+                        {% if subscription.status == 'active' %}bg-green-100 text-green-800
+                        {% elif subscription.status == 'pending' %}bg-yellow-100 text-yellow-800
+                        {% else %}bg-red-100 text-red-800{% endif %}">
+                        {{ subscription.get_status_display }}
+                    </span>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-600">Billing Cycle</p>
+                    <p class="font-semibold text-gray-900">{{ subscription.get_billing_cycle_display }}</p>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-600">Expires</p>
+                    <p class="font-semibold text-gray-900">{{ subscription.expires_at|date:"M d, Y"|default:"N/A" }}</p>
+                </div>
+            </div>
+            {% else %}
+            <p class="text-gray-500 text-center py-4">No active subscription</p>
+            {% endif %}
+        </div>
+
+        <!-- Limits -->
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <h3 class="text-lg font-bold text-gray-900 mb-4">
+                <i class="fas fa-sliders-h text-orange-600 mr-2"></i> Limits
+            </h3>
+            <div class="space-y-3">
+                <div>
+                    <p class="text-sm text-gray-600">Max Users</p>
+                    <p class="text-2xl font-bold text-gray-900">{{ tenant.max_users }}</p>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-600">Max Products</p>
+                    <p class="text-2xl font-bold text-gray-900">{{ tenant.max_products }}</p>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-600">Max Warehouses</p>
+                    <p class="text-2xl font-bold text-gray-900">{{ tenant.max_warehouses }}</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Timestamps -->
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <h3 class="text-lg font-bold text-gray-900 mb-4">
+                <i class="fas fa-clock text-gray-600 mr-2"></i> Timeline
+            </h3>
+            <div class="space-y-3">
+                <div>
+                    <p class="text-sm text-gray-600">Created</p>
+                    <p class="font-semibold text-gray-900">{{ tenant.created_at|date:"M d, Y H:i" }}</p>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-600">Last Updated</p>
+                    <p class="font-semibold text-gray-900">{{ tenant.updated_at|date:"M d, Y H:i" }}</p>
+                </div>
+                {% if tenant.paid_until %}
+                <div>
+                    <p class="text-sm text-gray-600">Paid Until</p>
+                    <p class="font-semibold text-gray-900">{{ tenant.paid_until|date:"M d, Y" }}</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

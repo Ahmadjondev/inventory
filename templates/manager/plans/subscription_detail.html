@@ -1,0 +1,10 @@
+{% extends 'manager/base.html' %}
+{% block title %}Subscription Detail{% endblock %}
+{% block content %}
+<h2 class="text-3xl font-bold mb-6">Subscription Details</h2>
+<div class="bg-white rounded-lg shadow-md p-6">
+    <p><strong>Tenant:</strong> {{ subscription.tenant.name }}</p>
+    <p><strong>Plan:</strong> {{ subscription.plan.name }}</p>
+    <p><strong>Status:</strong> {{ subscription.get_status_display }}</p>
+</div>
+{% endblock %}
