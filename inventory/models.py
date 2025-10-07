@@ -24,6 +24,28 @@ class Supplier(TimeStampedModel):
         return self.name
 
 
+class Category(TimeStampedModel):
+    """Product categories for organization and filtering."""
+
+    name = models.CharField(max_length=150, unique=True)
+    description = models.TextField(blank=True)
+    parent = models.ForeignKey(
+        "self",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="subcategories",
+        help_text="Parent category for hierarchical structure",
+    )
+
+    class Meta:
+        ordering = ["name"]
+        verbose_name_plural = "Categories"
+
+    def __str__(self):
+        return self.name
+
+
 class Product(TimeStampedModel):
     """Represents a purchasable product or assembled item.
 
@@ -33,6 +55,14 @@ class Product(TimeStampedModel):
     name = models.CharField(max_length=255)
     code = models.CharField(max_length=100, unique=True)
     oem_number = models.CharField(max_length=150, blank=True)
+    category = models.ForeignKey(
+        Category,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="products",
+        help_text="Product category",
+    )
     supplier = models.ForeignKey(
         Supplier, on_delete=models.SET_NULL, null=True, related_name="products"
     )
@@ -95,9 +125,25 @@ class Stock(TimeStampedModel):
         blank=True,
     )
     quantity = models.PositiveIntegerField(default=0)
+    low_stock_threshold = models.PositiveIntegerField(
+        default=10, help_text="Alert when stock falls below this level"
+    )
+    reorder_quantity = models.PositiveIntegerField(
+        default=50, help_text="Suggested reorder quantity"
+    )
 
     class Meta:
         unique_together = [("warehouse", "product", "part")]
+
+    @property
+    def is_low_stock(self):
+        """Check if current quantity is below threshold."""
+        return self.quantity <= self.low_stock_threshold
+
+    @property
+    def is_out_of_stock(self):
+        """Check if product is out of stock."""
+        return self.quantity == 0
 
     def __str__(self):
         label = self.product.code if self.product else f"PART:{self.part_id}"
@@ -649,6 +695,7 @@ class Sale(TimeStampedModel):
                     target_id=self.id,
                     context={"sale_number": self.sale_number},
                 )
+
     def __str__(self):
         return self.sale_number
 
@@ -943,3 +990,130 @@ class OfflineSaleBuffer(TimeStampedModel):
         self.synced = True
         self.synced_at = timezone.now()
         self.save(update_fields=["synced", "synced_at", "updated_at"])
+
+
+class OrderList(TimeStampedModel):
+    """Track unavailable products that need to be ordered from suppliers."""
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        ORDERED = "ordered", "Ordered"
+        RECEIVED = "received", "Received"
+        CANCELLED = "cancelled", "Cancelled"
+
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="order_requests",
+    )
+    part = models.ForeignKey(
+        ProductPart,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="order_requests",
+    )
+    warehouse = models.ForeignKey(
+        Warehouse, on_delete=models.CASCADE, related_name="order_requests"
+    )
+    supplier = models.ForeignKey(
+        Supplier,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="order_requests",
+    )
+    quantity_requested = models.PositiveIntegerField()
+    quantity_received = models.PositiveIntegerField(default=0)
+    status = models.CharField(
+        max_length=20, choices=Status.choices, default=Status.PENDING
+    )
+    requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="order_requests",
+    )
+    notes = models.TextField(blank=True)
+    expected_date = models.DateField(null=True, blank=True)
+    ordered_at = models.DateTimeField(null=True, blank=True)
+    received_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        item = self.product or self.part
+        return f"Order {item} x{self.quantity_requested} - {self.status}"
+
+
+class InventoryCheck(TimeStampedModel):
+    """Physical inventory count verification."""
+
+    class Status(models.TextChoices):
+        DRAFT = "draft", "Draft"
+        IN_PROGRESS = "in_progress", "In Progress"
+        COMPLETED = "completed", "Completed"
+
+    check_number = models.CharField(max_length=32, unique=True, default="")
+    warehouse = models.ForeignKey(
+        Warehouse, on_delete=models.CASCADE, related_name="inventory_checks"
+    )
+    status = models.CharField(
+        max_length=20, choices=Status.choices, default=Status.DRAFT
+    )
+    scheduled_date = models.DateField(default=timezone.now)
+    started_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    conducted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="conducted_checks",
+    )
+    notes = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def save(self, *args, **kwargs):
+        if not self.check_number:
+            self.check_number = (
+                f"IC-{timezone.now():%Y%m%d}-{uuid.uuid4().hex[:6].upper()}"
+            )
+        return super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.check_number} - {self.warehouse.name}"
+
+
+class InventoryCheckLine(TimeStampedModel):
+    """Individual product counts during inventory check."""
+
+    inventory_check = models.ForeignKey(
+        InventoryCheck, on_delete=models.CASCADE, related_name="lines"
+    )
+    stock = models.ForeignKey(Stock, on_delete=models.CASCADE, related_name="checks")
+    expected_quantity = models.PositiveIntegerField(
+        help_text="System recorded quantity"
+    )
+    actual_quantity = models.PositiveIntegerField(help_text="Physical count quantity")
+    difference = models.IntegerField(
+        default=0, help_text="Actual - Expected (positive=surplus, negative=shortage)"
+    )
+    notes = models.CharField(max_length=255, blank=True)
+
+    class Meta:
+        ordering = ["inventory_check", "created_at"]
+        unique_together = [("inventory_check", "stock")]
+
+    def save(self, *args, **kwargs):
+        self.difference = self.actual_quantity - self.expected_quantity
+        return super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.inventory_check.check_number} - {self.stock} (Diff: {self.difference})"

@@ -1,6 +1,7 @@
 from django.contrib import admin
 from .models import (
     Supplier,
+    Category,
     Product,
     ProductPart,
     Warehouse,
@@ -27,6 +28,9 @@ from .models import (
     PaymentGatewayTransaction,
     Barcode,
     OfflineSaleBuffer,
+    OrderList,
+    InventoryCheck,
+    InventoryCheckLine,
 )
 
 
@@ -34,6 +38,13 @@ from .models import (
 class SupplierAdmin(admin.ModelAdmin):
     list_display = ("name", "contact", "created_at")
     search_fields = ("name",)
+
+
+@admin.register(Category)
+class CategoryAdmin(admin.ModelAdmin):
+    list_display = ("name", "parent", "created_at")
+    search_fields = ("name", "description")
+    list_filter = ("parent",)
 
 
 class ProductPartInline(admin.TabularInline):
@@ -46,6 +57,7 @@ class ProductAdmin(admin.ModelAdmin):
     list_display = (
         "code",
         "name",
+        "category",
         "supplier",
         "price_usd",
         "price_uzs",
@@ -53,6 +65,7 @@ class ProductAdmin(admin.ModelAdmin):
         "is_split",
     )
     search_fields = ("code", "name", "oem_number")
+    list_filter = ("category", "supplier", "is_split")
     inlines = [ProductPartInline]
 
 
@@ -221,3 +234,57 @@ class BarcodeAdmin(admin.ModelAdmin):
 class OfflineSaleBufferAdmin(admin.ModelAdmin):
     list_display = ("device_id", "synced", "created_at")
     list_filter = ("synced",)
+
+
+@admin.register(OrderList)
+class OrderListAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "product",
+        "part",
+        "warehouse",
+        "supplier",
+        "quantity_requested",
+        "quantity_received",
+        "status",
+        "expected_date",
+        "created_at",
+    )
+    list_filter = ("status", "warehouse", "supplier")
+    search_fields = ("product__name", "product__code", "part__name", "notes")
+    date_hierarchy = "created_at"
+
+
+class InventoryCheckLineInline(admin.TabularInline):
+    model = InventoryCheckLine
+    extra = 0
+    readonly_fields = ("difference",)
+
+
+@admin.register(InventoryCheck)
+class InventoryCheckAdmin(admin.ModelAdmin):
+    list_display = (
+        "check_number",
+        "warehouse",
+        "status",
+        "scheduled_date",
+        "conducted_by",
+        "created_at",
+    )
+    list_filter = ("status", "warehouse")
+    search_fields = ("check_number", "notes")
+    date_hierarchy = "scheduled_date"
+    inlines = [InventoryCheckLineInline]
+
+
+@admin.register(InventoryCheckLine)
+class InventoryCheckLineAdmin(admin.ModelAdmin):
+    list_display = (
+        "inventory_check",
+        "stock",
+        "expected_quantity",
+        "actual_quantity",
+        "difference",
+    )
+    list_filter = ("inventory_check__warehouse",)
+    readonly_fields = ("difference",)

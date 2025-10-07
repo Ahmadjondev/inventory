@@ -1,6 +1,7 @@
 from decimal import Decimal, ROUND_HALF_UP
 
 from django.db import transaction
+from django.utils import timezone
 from rest_framework import serializers
 
 from .models import (
@@ -9,6 +10,7 @@ from .models import (
     Warehouse,
     StockMovement,
     Supplier,
+    Category,
     Stock,
     Customer,
     Vehicle,
@@ -31,6 +33,9 @@ from .models import (
     PaymentGatewayTransaction,
     Barcode,
     OfflineSaleBuffer,
+    OrderList,
+    InventoryCheck,
+    InventoryCheckLine,
 )
 
 
@@ -39,6 +44,29 @@ class SupplierSerializer(serializers.ModelSerializer):
         model = Supplier
         fields = ["id", "name", "contact", "created_at", "updated_at"]
         read_only_fields = ["id", "created_at", "updated_at"]
+
+
+class CategorySerializer(serializers.ModelSerializer):
+    subcategories = serializers.SerializerMethodField()
+    parent_name = serializers.CharField(source="parent.name", read_only=True)
+
+    class Meta:
+        model = Category
+        fields = [
+            "id",
+            "name",
+            "description",
+            "parent",
+            "parent_name",
+            "subcategories",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at"]
+
+    def get_subcategories(self, obj):
+        # Only return subcategory IDs to avoid deep nesting
+        return [{"id": sub.id, "name": sub.name} for sub in obj.subcategories.all()]
 
 
 class ProductPartSerializer(serializers.ModelSerializer):
@@ -60,6 +88,7 @@ class ProductPartSerializer(serializers.ModelSerializer):
 class ProductSerializer(serializers.ModelSerializer):
     parts = ProductPartSerializer(many=True, read_only=True)
     supplier_name = serializers.CharField(source="supplier.name", read_only=True)
+    category_name = serializers.CharField(source="category.name", read_only=True)
 
     class Meta:
         model = Product
@@ -68,6 +97,8 @@ class ProductSerializer(serializers.ModelSerializer):
             "name",
             "code",
             "oem_number",
+            "category",
+            "category_name",
             "supplier",
             "supplier_name",
             "price_usd",
@@ -100,8 +131,11 @@ class WarehouseSerializer(serializers.ModelSerializer):
 
 class StockSerializer(serializers.ModelSerializer):
     product_code = serializers.CharField(source="product.code", read_only=True)
+    product_name = serializers.CharField(source="product.name", read_only=True)
     part_name = serializers.CharField(source="part.name", read_only=True)
     warehouse_name = serializers.CharField(source="warehouse.name", read_only=True)
+    is_low_stock = serializers.BooleanField(read_only=True)
+    is_out_of_stock = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = Stock
@@ -111,12 +145,17 @@ class StockSerializer(serializers.ModelSerializer):
             "warehouse_name",
             "product",
             "product_code",
+            "product_name",
             "part",
             "part_name",
             "quantity",
+            "low_stock_threshold",
+            "reorder_quantity",
+            "is_low_stock",
+            "is_out_of_stock",
             "updated_at",
         ]
-        read_only_fields = ["id", "updated_at"]
+        read_only_fields = ["id", "updated_at", "is_low_stock", "is_out_of_stock"]
 
 
 class StockMovementSerializer(serializers.ModelSerializer):
@@ -831,3 +870,164 @@ class OfflineSaleBufferSerializer(serializers.ModelSerializer):
         model = OfflineSaleBuffer
         fields = ["id", "device_id", "payload", "synced", "synced_at", "created_at"]
         read_only_fields = ["id", "synced", "synced_at", "created_at"]
+
+
+class OrderListSerializer(serializers.ModelSerializer):
+    product_code = serializers.CharField(source="product.code", read_only=True)
+    product_name = serializers.CharField(source="product.name", read_only=True)
+    part_name = serializers.CharField(source="part.name", read_only=True)
+    warehouse_name = serializers.CharField(source="warehouse.name", read_only=True)
+    supplier_name = serializers.CharField(source="supplier.name", read_only=True)
+    requested_by_username = serializers.CharField(
+        source="requested_by.username", read_only=True
+    )
+
+    class Meta:
+        model = OrderList
+        fields = [
+            "id",
+            "product",
+            "product_code",
+            "product_name",
+            "part",
+            "part_name",
+            "warehouse",
+            "warehouse_name",
+            "supplier",
+            "supplier_name",
+            "quantity_requested",
+            "quantity_received",
+            "status",
+            "requested_by",
+            "requested_by_username",
+            "notes",
+            "expected_date",
+            "ordered_at",
+            "received_at",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "id",
+            "requested_by",
+            "requested_by_username",
+            "created_at",
+            "updated_at",
+        ]
+
+    def create(self, validated_data):
+        request = self.context.get("request")
+        if request and request.user.is_authenticated:
+            validated_data["requested_by"] = request.user
+        return super().create(validated_data)
+
+
+class InventoryCheckLineSerializer(serializers.ModelSerializer):
+    product_code = serializers.CharField(
+        source="stock.product.code", read_only=True, allow_null=True
+    )
+    product_name = serializers.CharField(
+        source="stock.product.name", read_only=True, allow_null=True
+    )
+    warehouse_name = serializers.CharField(
+        source="stock.warehouse.name", read_only=True
+    )
+
+    class Meta:
+        model = InventoryCheckLine
+        fields = [
+            "id",
+            "inventory_check",
+            "stock",
+            "product_code",
+            "product_name",
+            "warehouse_name",
+            "expected_quantity",
+            "actual_quantity",
+            "difference",
+            "notes",
+            "created_at",
+        ]
+        read_only_fields = ["id", "difference", "created_at"]
+
+
+class InventoryCheckSerializer(serializers.ModelSerializer):
+    lines = InventoryCheckLineSerializer(many=True, read_only=True)
+    warehouse_name = serializers.CharField(source="warehouse.name", read_only=True)
+    conducted_by_username = serializers.CharField(
+        source="conducted_by.username", read_only=True
+    )
+
+    class Meta:
+        model = InventoryCheck
+        fields = [
+            "id",
+            "check_number",
+            "warehouse",
+            "warehouse_name",
+            "status",
+            "scheduled_date",
+            "started_at",
+            "completed_at",
+            "conducted_by",
+            "conducted_by_username",
+            "notes",
+            "lines",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "id",
+            "check_number",
+            "conducted_by",
+            "conducted_by_username",
+            "lines",
+            "created_at",
+            "updated_at",
+        ]
+
+    def create(self, validated_data):
+        request = self.context.get("request")
+        if request and request.user.is_authenticated:
+            validated_data["conducted_by"] = request.user
+        return super().create(validated_data)
+
+
+class InventoryCheckLineWriteSerializer(serializers.Serializer):
+    stock = serializers.PrimaryKeyRelatedField(queryset=Stock.objects.all())
+    actual_quantity = serializers.IntegerField(min_value=0)
+    notes = serializers.CharField(max_length=255, required=False, allow_blank=True)
+
+
+class InventoryCheckWriteSerializer(serializers.ModelSerializer):
+    lines = InventoryCheckLineWriteSerializer(many=True)
+
+    class Meta:
+        model = InventoryCheck
+        fields = ["id", "warehouse", "scheduled_date", "notes", "lines"]
+
+    def create(self, validated_data):
+        lines_data = validated_data.pop("lines", [])
+        request = self.context.get("request")
+
+        with transaction.atomic():
+            if request and request.user.is_authenticated:
+                validated_data["conducted_by"] = request.user
+
+            check = InventoryCheck.objects.create(**validated_data)
+
+            for line_data in lines_data:
+                stock = line_data["stock"]
+                InventoryCheckLine.objects.create(
+                    inventory_check=check,
+                    stock=stock,
+                    expected_quantity=stock.quantity,
+                    actual_quantity=line_data["actual_quantity"],
+                    notes=line_data.get("notes", ""),
+                )
+
+            check.status = InventoryCheck.Status.COMPLETED
+            check.completed_at = timezone.now()
+            check.save()
+
+        return check

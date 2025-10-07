@@ -2,7 +2,8 @@
 Custom middleware for enhanced tenant handling.
 """
 
-from django.http import JsonResponse
+from django.http import Http404, JsonResponse
+from django.shortcuts import redirect
 from django_tenants.utils import get_tenant_domain_model
 from django.core.exceptions import DisallowedHost
 
@@ -28,6 +29,11 @@ class StrictTenantMiddleware:
         # Skip tenant checks for admin subdomain
         if getattr(request, "skip_tenant_check", False):
             return self.get_response(request)
+        path = request.path_info
+        if not path.startswith("/api/"):
+            # Tenant should not access non-API routes
+            return redirect("/api/docs/")
+            raise Http404("Only /api/ endpoints are allowed for tenant subdomains.")
 
         try:
             response = self.get_response(request)
@@ -100,5 +106,4 @@ class StrictTenantMiddleware:
         except DomainModel.DoesNotExist:
             pass  # Already handled above
 
-        # Return None to let Django handle other exceptions normally
         return None
