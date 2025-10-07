@@ -122,7 +122,7 @@ def dashboard(request):
 @user_passes_test(is_superadmin)
 def tenant_list(request):
     """List all tenants with filtering"""
-    tenants = Client.objects.all().order_by("-created_at")
+    tenants = Client.objects.prefetch_related("domains").all().order_by("-created_at")
 
     # Filtering
     status_filter = request.GET.get("status", "")
@@ -137,7 +137,6 @@ def tenant_list(request):
             | Q(schema_name__icontains=search_query)
             | Q(email__icontains=search_query)
         )
-
     # Pagination
     paginator = Paginator(tenants, 20)
     page_number = request.GET.get("page")
@@ -562,6 +561,238 @@ def subscription_detail(request, pk):
         "payments": payments,
     }
     return render(request, "manager/plans/subscription_detail.html", context)
+
+
+@login_required
+@user_passes_test(is_superadmin)
+def subscription_create(request):
+    """Create new subscription for a tenant"""
+    if request.method == "POST":
+        tenant_id = request.POST.get("tenant")
+        plan_id = request.POST.get("plan")
+        billing_cycle = request.POST.get("billing_cycle")
+        auto_renew = request.POST.get("auto_renew") == "on"
+
+        try:
+            tenant = get_object_or_404(Client, pk=tenant_id)
+            plan = get_object_or_404(SubscriptionPlan, pk=plan_id)
+
+            # Check if tenant already has a subscription
+            if hasattr(tenant, "subscription"):
+                messages.error(
+                    request,
+                    f'Tenant "{tenant.name}" already has an active subscription.',
+                )
+                return redirect("manager:subscription_create")
+
+            # Calculate expiry date based on billing cycle
+            if billing_cycle == Subscription.BillingCycle.MONTHLY:
+                expires_at = timezone.now() + timedelta(days=30)
+            else:  # yearly
+                expires_at = timezone.now() + timedelta(days=365)
+
+            # Create subscription
+            subscription = Subscription.objects.create(
+                tenant=tenant,
+                plan=plan,
+                billing_cycle=billing_cycle,
+                status=Subscription.Status.ACTIVE,
+                expires_at=expires_at,
+                auto_renew=auto_renew,
+            )
+
+            # Update tenant limits based on plan
+            tenant.max_users = plan.max_users
+            tenant.max_products = plan.max_products
+            tenant.max_warehouses = plan.max_warehouses
+            tenant.status = Client.Status.ACTIVE
+            tenant.paid_until = expires_at.date()
+            tenant.save()
+
+            messages.success(
+                request,
+                f'Subscription created for "{tenant.name}" with {plan.name} plan.',
+            )
+            return redirect("manager:subscription_detail", pk=subscription.pk)
+        except Exception as e:
+            messages.error(request, f"Error creating subscription: {str(e)}")
+
+    # Get tenants without subscriptions
+    tenants_with_subs = Subscription.objects.values_list("tenant_id", flat=True)
+    available_tenants = Client.objects.exclude(id__in=tenants_with_subs)
+    plans = SubscriptionPlan.objects.filter(is_active=True)
+
+    # Check if tenant is pre-selected via query param
+    preselected_tenant_id = request.GET.get("tenant")
+    preselected_tenant = None
+    if preselected_tenant_id:
+        try:
+            preselected_tenant = Client.objects.get(pk=preselected_tenant_id)
+            if hasattr(preselected_tenant, "subscription"):
+                messages.warning(
+                    request,
+                    f'Tenant "{preselected_tenant.name}" already has a subscription.',
+                )
+                preselected_tenant = None
+        except Client.DoesNotExist:
+            pass
+
+    context = {
+        "action": "Create",
+        "tenants": available_tenants,
+        "plans": plans,
+        "billing_cycle_choices": Subscription.BillingCycle.choices,
+        "preselected_tenant": preselected_tenant,
+    }
+    return render(request, "manager/plans/subscription_form.html", context)
+
+
+@login_required
+@user_passes_test(is_superadmin)
+def subscription_edit(request, pk):
+    """Edit existing subscription"""
+    subscription = get_object_or_404(Subscription, pk=pk)
+
+    if request.method == "POST":
+        plan_id = request.POST.get("plan")
+        billing_cycle = request.POST.get("billing_cycle")
+        auto_renew = request.POST.get("auto_renew") == "on"
+        status = request.POST.get("status")
+
+        try:
+            # Update plan if changed
+            if plan_id and int(plan_id) != subscription.plan.id:
+                new_plan = get_object_or_404(SubscriptionPlan, pk=plan_id)
+                subscription.plan = new_plan
+
+                # Update tenant limits
+                subscription.tenant.max_users = new_plan.max_users
+                subscription.tenant.max_products = new_plan.max_products
+                subscription.tenant.max_warehouses = new_plan.max_warehouses
+                subscription.tenant.save()
+
+            subscription.billing_cycle = billing_cycle
+            subscription.auto_renew = auto_renew
+            subscription.status = status
+            subscription.save()
+
+            messages.success(request, "Subscription updated successfully!")
+            return redirect("manager:subscription_detail", pk=subscription.pk)
+        except Exception as e:
+            messages.error(request, f"Error updating subscription: {str(e)}")
+
+    plans = SubscriptionPlan.objects.filter(is_active=True)
+
+    context = {
+        "action": "Edit",
+        "subscription": subscription,
+        "plans": plans,
+        "billing_cycle_choices": Subscription.BillingCycle.choices,
+        "status_choices": Subscription.Status.choices,
+    }
+    return render(request, "manager/plans/subscription_form.html", context)
+
+
+@login_required
+@user_passes_test(is_superadmin)
+def subscription_cancel(request, pk):
+    """Cancel a subscription"""
+    subscription = get_object_or_404(Subscription, pk=pk)
+
+    if request.method == "POST":
+        subscription.status = Subscription.Status.CANCELLED
+        subscription.cancelled_at = timezone.now()
+        subscription.auto_renew = False
+        subscription.save()
+
+        # Update tenant status
+        subscription.tenant.status = Client.Status.SUSPENDED
+        subscription.tenant.save()
+
+        messages.warning(
+            request,
+            f'Subscription for "{subscription.tenant.name}" has been cancelled.',
+        )
+        return redirect("manager:subscription_detail", pk=pk)
+
+    context = {"subscription": subscription}
+    return render(request, "manager/plans/subscription_confirm_cancel.html", context)
+
+
+@login_required
+@user_passes_test(is_superadmin)
+def subscription_renew(request, pk):
+    """Renew a subscription"""
+    subscription = get_object_or_404(Subscription, pk=pk)
+
+    if request.method == "POST":
+        # Calculate new expiry date
+        if subscription.billing_cycle == Subscription.BillingCycle.MONTHLY:
+            new_expires_at = timezone.now() + timedelta(days=30)
+        else:
+            new_expires_at = timezone.now() + timedelta(days=365)
+
+        subscription.status = Subscription.Status.ACTIVE
+        subscription.expires_at = new_expires_at
+        subscription.cancelled_at = None
+        subscription.save()
+
+        # Update tenant
+        subscription.tenant.status = Client.Status.ACTIVE
+        subscription.tenant.paid_until = new_expires_at.date()
+        subscription.tenant.save()
+
+        messages.success(
+            request,
+            f'Subscription for "{subscription.tenant.name}" has been renewed until {new_expires_at.date()}.',
+        )
+        return redirect("manager:subscription_detail", pk=pk)
+
+    context = {"subscription": subscription}
+    return render(request, "manager/plans/subscription_confirm_renew.html", context)
+
+
+@login_required
+@user_passes_test(is_superadmin)
+def subscription_change_plan(request, pk):
+    """Change subscription plan"""
+    subscription = get_object_or_404(Subscription, pk=pk)
+
+    if request.method == "POST":
+        plan_id = request.POST.get("plan")
+
+        try:
+            new_plan = get_object_or_404(SubscriptionPlan, pk=plan_id)
+
+            if new_plan == subscription.plan:
+                messages.info(request, "Tenant is already on this plan.")
+                return redirect("manager:subscription_detail", pk=pk)
+
+            # Update subscription
+            old_plan = subscription.plan
+            subscription.plan = new_plan
+            subscription.save()
+
+            # Update tenant limits
+            subscription.tenant.max_users = new_plan.max_users
+            subscription.tenant.max_products = new_plan.max_products
+            subscription.tenant.max_warehouses = new_plan.max_warehouses
+            subscription.tenant.save()
+
+            messages.success(
+                request,
+                f'Plan changed from "{old_plan.name}" to "{new_plan.name}" for "{subscription.tenant.name}".',
+            )
+            return redirect("manager:subscription_detail", pk=pk)
+        except Exception as e:
+            messages.error(request, f"Error changing plan: {str(e)}")
+
+    plans = SubscriptionPlan.objects.filter(is_active=True).exclude(
+        id=subscription.plan.id
+    )
+
+    context = {"subscription": subscription, "plans": plans}
+    return render(request, "manager/plans/subscription_change_plan.html", context)
 
 
 @login_required

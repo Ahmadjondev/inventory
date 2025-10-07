@@ -1,0 +1,195 @@
+{% extends 'manager/base.html' %}
+
+{% block title %}{{ action }} Subscription{% endblock %}
+
+{% block content %}
+<div class="mb-6">
+    <h2 class="text-3xl font-bold text-gray-900">{{ action }} Subscription</h2>
+    <p class="text-gray-600 mt-1">
+        {% if subscription %}
+        Modify subscription settings
+        {% else %}
+        Create a new subscription for a tenant
+        {% endif %}
+    </p>
+</div>
+
+<div class="bg-white rounded-lg shadow-md p-8 max-w-3xl">
+    <form method="post">
+        {% csrf_token %}
+        
+        <div class="space-y-6">
+            {% if not subscription %}
+            <!-- Tenant Selection (only for new subscriptions) -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">
+                    Tenant <span class="text-red-500">*</span>
+                </label>
+                <select name="tenant" required class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                    <option value="">Select a tenant...</option>
+                    {% for tenant in tenants %}
+                    <option value="{{ tenant.id }}" {% if preselected_tenant and preselected_tenant.id == tenant.id %}selected{% endif %}>
+                        {{ tenant.name }} ({{ tenant.schema_name }})
+                    </option>
+                    {% endfor %}
+                </select>
+                <p class="text-xs text-gray-500 mt-1">Only tenants without active subscriptions are shown</p>
+            </div>
+            {% else %}
+            <!-- Show current tenant (read-only) -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Tenant</label>
+                <div class="w-full px-4 py-2 bg-gray-50 border border-gray-300 rounded-lg">
+                    <p class="font-semibold">{{ subscription.tenant.name }}</p>
+                    <p class="text-sm text-gray-500">{{ subscription.tenant.schema_name }}</p>
+                </div>
+            </div>
+            {% endif %}
+            
+            <!-- Plan Selection -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">
+                    Subscription Plan <span class="text-red-500">*</span>
+                </label>
+                <select name="plan" required class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" id="planSelect">
+                    <option value="">Select a plan...</option>
+                    {% for plan in plans %}
+                    <option value="{{ plan.id }}" 
+                            data-monthly="{{ plan.price_monthly }}"
+                            data-yearly="{{ plan.price_yearly }}"
+                            data-users="{{ plan.max_users }}"
+                            data-products="{{ plan.max_products }}"
+                            data-warehouses="{{ plan.max_warehouses }}"
+                            {% if subscription and subscription.plan.id == plan.id %}selected{% endif %}>
+                        {{ plan.name }} - ${{ plan.price_monthly }}/mo or ${{ plan.price_yearly }}/yr
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            
+            <!-- Plan Preview -->
+            <div id="planPreview" class="hidden bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <h4 class="font-semibold text-blue-900 mb-2">Plan Features:</h4>
+                <div class="grid grid-cols-3 gap-3 text-sm">
+                    <div>
+                        <i class="fas fa-users text-blue-600 mr-1"></i>
+                        <span id="previewUsers" class="font-semibold">0</span> users
+                    </div>
+                    <div>
+                        <i class="fas fa-box text-blue-600 mr-1"></i>
+                        <span id="previewProducts" class="font-semibold">0</span> products
+                    </div>
+                    <div>
+                        <i class="fas fa-warehouse text-blue-600 mr-1"></i>
+                        <span id="previewWarehouses" class="font-semibold">0</span> warehouses
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Billing Cycle -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">
+                    Billing Cycle <span class="text-red-500">*</span>
+                </label>
+                <div class="grid grid-cols-2 gap-4">
+                    {% for value, label in billing_cycle_choices %}
+                    <label class="relative flex cursor-pointer rounded-lg border border-gray-300 bg-white p-4 hover:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500 
+                        {% if subscription and subscription.billing_cycle == value %}border-blue-500 bg-blue-50{% endif %}">
+                        <input type="radio" name="billing_cycle" value="{{ value }}" 
+                               {% if subscription and subscription.billing_cycle == value %}checked{% elif not subscription and value == 'monthly' %}checked{% endif %}
+                               class="mt-1 h-4 w-4 text-blue-600 border-gray-300 focus:ring-blue-500">
+                        <div class="ml-3">
+                            <span class="block text-sm font-medium text-gray-900">{{ label }}</span>
+                            <span class="block text-sm text-gray-500" id="price{{ value|title }}">
+                                {% if subscription %}
+                                    {% if value == 'monthly' %}
+                                    ${{ subscription.plan.price_monthly }}/month
+                                    {% else %}
+                                    ${{ subscription.plan.price_yearly }}/year
+                                    {% endif %}
+                                {% else %}
+                                Select a plan
+                                {% endif %}
+                            </span>
+                        </div>
+                    </label>
+                    {% endfor %}
+                </div>
+            </div>
+            
+            <!-- Auto Renew -->
+            <div class="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                <label class="flex items-start cursor-pointer">
+                    <input type="checkbox" name="auto_renew" 
+                           {% if subscription %}{% if subscription.auto_renew %}checked{% endif %}{% else %}checked{% endif %}
+                           class="mt-1 h-5 w-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+                    <div class="ml-3">
+                        <span class="block text-sm font-medium text-gray-900">Enable Auto-Renewal</span>
+                        <span class="block text-sm text-gray-500">Automatically renew this subscription when it expires</span>
+                    </div>
+                </label>
+            </div>
+            
+            {% if subscription %}
+            <!-- Status (only when editing) -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">
+                    Status <span class="text-red-500">*</span>
+                </label>
+                <select name="status" required class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                    {% for value, label in status_choices %}
+                    <option value="{{ value }}" {% if subscription.status == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% endif %}
+        </div>
+        
+        <div class="mt-8 flex items-center justify-end space-x-4">
+            <a href="{% if subscription %}{% url 'manager:subscription_detail' subscription.pk %}{% else %}{% url 'manager:subscription_list' %}{% endif %}" 
+               class="px-6 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium transition">
+                Cancel
+            </a>
+            <button type="submit" 
+                    class="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition">
+                <i class="fas fa-save mr-2"></i> {{ action }} Subscription
+            </button>
+        </div>
+    </form>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const planSelect = document.getElementById('planSelect');
+    const planPreview = document.getElementById('planPreview');
+    const priceMonthly = document.getElementById('priceMonthly');
+    const priceYearly = document.getElementById('priceYearly');
+    
+    planSelect.addEventListener('change', function() {
+        const selectedOption = this.options[this.selectedIndex];
+        
+        if (selectedOption.value) {
+            // Update preview
+            planPreview.classList.remove('hidden');
+            document.getElementById('previewUsers').textContent = selectedOption.dataset.users;
+            document.getElementById('previewProducts').textContent = selectedOption.dataset.products;
+            document.getElementById('previewWarehouses').textContent = selectedOption.dataset.warehouses;
+            
+            // Update pricing
+            priceMonthly.textContent = '$' + selectedOption.dataset.monthly + '/month';
+            priceYearly.textContent = '$' + selectedOption.dataset.yearly + '/year';
+        } else {
+            planPreview.classList.add('hidden');
+            priceMonthly.textContent = 'Select a plan';
+            priceYearly.textContent = 'Select a plan';
+        }
+    });
+    
+    // Trigger change event if a plan is already selected
+    if (planSelect.value) {
+        planSelect.dispatchEvent(new Event('change'));
+    }
+});
+</script>
+
+{% endblock %}

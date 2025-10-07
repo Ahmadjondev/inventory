@@ -1,0 +1,115 @@
+{% extends 'manager/base.html' %}
+
+{% block title %}Change Subscription Plan{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto">
+    <div class="bg-white rounded-lg shadow-md p-8">
+        <div class="text-center mb-6">
+            <div class="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-purple-100 mb-4">
+                <i class="fas fa-exchange-alt text-3xl text-purple-600"></i>
+            </div>
+            <h2 class="text-2xl font-bold text-gray-900">Change Subscription Plan</h2>
+            <p class="text-gray-600 mt-2">Upgrade or downgrade the plan</p>
+        </div>
+        
+        <div class="bg-gray-50 rounded-lg p-4 mb-6">
+            <h3 class="font-semibold text-gray-900 mb-3">Current Plan:</h3>
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-lg font-bold text-gray-900">{{ subscription.plan.name }}</p>
+                    <p class="text-sm text-gray-600">
+                        {% if subscription.billing_cycle == 'monthly' %}
+                        ${{ subscription.plan.price_monthly }}/month
+                        {% else %}
+                        ${{ subscription.plan.price_yearly }}/year
+                        {% endif %}
+                    </p>
+                </div>
+                <div class="text-sm text-gray-600">
+                    <div><i class="fas fa-users mr-1"></i> {{ subscription.plan.max_users }} users</div>
+                    <div><i class="fas fa-box mr-1"></i> {{ subscription.plan.max_products }} products</div>
+                    <div><i class="fas fa-warehouse mr-1"></i> {{ subscription.plan.max_warehouses }} warehouses</div>
+                </div>
+            </div>
+        </div>
+        
+        <form method="post">
+            {% csrf_token %}
+            
+            <div class="mb-6">
+                <label class="block text-sm font-medium text-gray-700 mb-3">
+                    Select New Plan <span class="text-red-500">*</span>
+                </label>
+                
+                <div class="space-y-3">
+                    {% for plan in plans %}
+                    <label class="relative flex cursor-pointer rounded-lg border-2 border-gray-300 p-4 hover:border-purple-500 focus-within:ring-2 focus-within:ring-purple-500 transition">
+                        <input type="radio" name="plan" value="{{ plan.id }}" required
+                               class="mt-1 h-5 w-5 text-purple-600 border-gray-300 focus:ring-purple-500">
+                        <div class="ml-4 flex-1">
+                            <div class="flex items-center justify-between mb-2">
+                                <div>
+                                    <span class="block text-lg font-bold text-gray-900">{{ plan.name }}</span>
+                                    <span class="block text-sm text-gray-600">
+                                        ${{ plan.price_monthly }}/mo or ${{ plan.price_yearly }}/yr
+                                    </span>
+                                </div>
+                                {% if plan.plan_type == 'pro' %}
+                                <span class="inline-flex px-3 py-1 text-xs font-semibold rounded-full bg-purple-100 text-purple-800">
+                                    Popular
+                                </span>
+                                {% elif plan.plan_type == 'enterprise' %}
+                                <span class="inline-flex px-3 py-1 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800">
+                                    Premium
+                                </span>
+                                {% endif %}
+                            </div>
+                            <div class="grid grid-cols-3 gap-2 text-xs text-gray-600">
+                                <div><i class="fas fa-users text-blue-600 mr-1"></i> {{ plan.max_users }} users</div>
+                                <div><i class="fas fa-box text-purple-600 mr-1"></i> {{ plan.max_products }} products</div>
+                                <div><i class="fas fa-warehouse text-orange-600 mr-1"></i> {{ plan.max_warehouses }} warehouses</div>
+                            </div>
+                            <div class="mt-2 flex flex-wrap gap-2">
+                                {% if plan.has_advanced_reporting %}
+                                <span class="text-xs text-green-700"><i class="fas fa-check mr-1"></i> Adv. Reporting</span>
+                                {% endif %}
+                                {% if plan.has_api_access %}
+                                <span class="text-xs text-green-700"><i class="fas fa-check mr-1"></i> API Access</span>
+                                {% endif %}
+                                {% if plan.has_offline_support %}
+                                <span class="text-xs text-green-700"><i class="fas fa-check mr-1"></i> Offline</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </label>
+                    {% empty %}
+                    <p class="text-gray-500 text-center py-4">No other plans available</p>
+                    {% endfor %}
+                </div>
+            </div>
+            
+            <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                <div class="flex">
+                    <i class="fas fa-info-circle text-blue-600 mt-0.5 mr-3"></i>
+                    <div class="text-sm text-blue-800">
+                        <p class="font-semibold mb-1">Note:</p>
+                        <p>Changing the plan will immediately update tenant limits and features. The subscription expiry date will remain the same.</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="flex items-center justify-end space-x-4">
+                <a href="{% url 'manager:subscription_detail' subscription.pk %}" 
+                   class="px-6 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium transition">
+                    <i class="fas fa-arrow-left mr-2"></i> Cancel
+                </a>
+                <button type="submit" 
+                        class="px-6 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition">
+                    <i class="fas fa-exchange-alt mr-2"></i> Change Plan
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

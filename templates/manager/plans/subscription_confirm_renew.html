@@ -1,0 +1,80 @@
+{% extends 'manager/base.html' %}
+
+{% block title %}Renew Subscription{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto">
+    <div class="bg-white rounded-lg shadow-md p-8">
+        <div class="text-center mb-6">
+            <div class="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-green-100 mb-4">
+                <i class="fas fa-redo text-3xl text-green-600"></i>
+            </div>
+            <h2 class="text-2xl font-bold text-gray-900">Renew Subscription</h2>
+            <p class="text-gray-600 mt-2">Reactivate this subscription</p>
+        </div>
+        
+        <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+            <div class="flex">
+                <i class="fas fa-info-circle text-blue-600 mt-0.5 mr-3"></i>
+                <div class="text-sm text-blue-800">
+                    <p class="font-semibold mb-1">What will happen:</p>
+                    <ul class="list-disc list-inside space-y-1">
+                        <li>Subscription will be reactivated</li>
+                        <li>New expiry date will be set based on billing cycle</li>
+                        <li>Tenant will be activated</li>
+                        <li>Full access to all features will be restored</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        
+        <div class="bg-gray-50 rounded-lg p-4 mb-6">
+            <h3 class="font-semibold text-gray-900 mb-3">Subscription Details:</h3>
+            <div class="space-y-2 text-sm">
+                <div class="flex justify-between">
+                    <span class="text-gray-600">Tenant:</span>
+                    <span class="font-semibold">{{ subscription.tenant.name }}</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-gray-600">Plan:</span>
+                    <span class="font-semibold">{{ subscription.plan.name }}</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-gray-600">Billing Cycle:</span>
+                    <span class="font-semibold">{{ subscription.get_billing_cycle_display }}</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-gray-600">Price:</span>
+                    <span class="font-bold text-green-600">
+                        {% if subscription.billing_cycle == 'monthly' %}
+                        ${{ subscription.plan.price_monthly }}/month
+                        {% else %}
+                        ${{ subscription.plan.price_yearly }}/year
+                        {% endif %}
+                    </span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-gray-600">Current Status:</span>
+                    <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full 
+                        {% if subscription.status == 'cancelled' %}bg-red-100 text-red-800
+                        {% else %}bg-gray-100 text-gray-800{% endif %}">
+                        {{ subscription.get_status_display }}
+                    </span>
+                </div>
+            </div>
+        </div>
+        
+        <form method="post" class="flex items-center justify-end space-x-4">
+            {% csrf_token %}
+            <a href="{% url 'manager:subscription_detail' subscription.pk %}" 
+               class="px-6 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium transition">
+                <i class="fas fa-arrow-left mr-2"></i> Cancel
+            </a>
+            <button type="submit" 
+                    class="px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition">
+                <i class="fas fa-redo mr-2"></i> Renew Subscription
+            </button>
+        </form>
+    </div>
+</div>
+{% endblock %}

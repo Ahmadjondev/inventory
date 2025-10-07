@@ -1,9 +1,161 @@
 {% extends 'manager/base.html' %}
 {% block title %}Subscriptions{% endblock %}
 {% block content %}
-<h2 class="text-3xl font-bold mb-6">Subscriptions</h2>
-<div class="bg-white rounded-lg shadow-md p-6">
-    <p class="text-gray-600">Subscription management interface</p>
-    <p class="text-sm text-gray-500 mt-2">Filter: {{ status_filter|default:"All" }}</p>
+<div class="mb-6 flex items-center justify-between">
+    <div>
+        <h2 class="text-3xl font-bold text-gray-900">Subscriptions</h2>
+        <p class="text-gray-600 mt-1">Manage tenant subscriptions</p>
+    </div>
+    <a href="{% url 'manager:subscription_create' %}" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium transition">
+        <i class="fas fa-plus mr-2"></i> New Subscription
+    </a>
 </div>
+
+<!-- Filters -->
+<div class="bg-white rounded-lg shadow-md p-4 mb-6">
+    <form method="get" class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2">Status</label>
+            <select name="status" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                <option value="">All Statuses</option>
+                {% for value, label in status_choices %}
+                <option value="{{ value }}" {% if status_filter == value %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="flex items-end col-span-2">
+            <button type="submit" class="bg-gray-800 hover:bg-gray-900 text-white px-6 py-2 rounded-lg font-medium mr-2 transition">
+                <i class="fas fa-search mr-2"></i> Filter
+            </button>
+            <a href="{% url 'manager:subscription_list' %}" class="bg-gray-300 hover:bg-gray-400 text-gray-800 px-6 py-2 rounded-lg font-medium transition">
+                Clear
+            </a>
+        </div>
+    </form>
+</div>
+
+<!-- Subscriptions Table -->
+<div class="bg-white rounded-lg shadow-md overflow-hidden">
+    <table class="min-w-full divide-y divide-gray-200">
+        <thead class="bg-gray-50">
+            <tr>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tenant</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Plan</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Billing</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Expires</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Auto Renew</th>
+                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+            </tr>
+        </thead>
+        <tbody class="bg-white divide-y divide-gray-200">
+            {% for subscription in page_obj %}
+            <tr class="hover:bg-gray-50">
+                <td class="px-6 py-4 whitespace-nowrap">
+                    <div class="flex items-center">
+                        <div class="w-10 h-10 bg-purple-600 rounded-full flex items-center justify-center text-white font-bold">
+                            {{ subscription.tenant.name|slice:":1"|upper }}
+                        </div>
+                        <div class="ml-4">
+                            <div class="text-sm font-medium text-gray-900">{{ subscription.tenant.name }}</div>
+                            <div class="text-sm text-gray-500">{{ subscription.tenant.schema_name }}</div>
+                        </div>
+                    </div>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap">
+                    <div class="text-sm font-medium text-gray-900">{{ subscription.plan.name }}</div>
+                    <div class="text-sm text-gray-500">
+                        {% if subscription.billing_cycle == 'monthly' %}
+                        ${{ subscription.plan.price_monthly }}/mo
+                        {% else %}
+                        ${{ subscription.plan.price_yearly }}/yr
+                        {% endif %}
+                    </div>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap">
+                    <span class="text-sm text-gray-900">{{ subscription.get_billing_cycle_display }}</span>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap">
+                    <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full
+                        {% if subscription.status == 'active' %}bg-green-100 text-green-800
+                        {% elif subscription.status == 'pending' %}bg-yellow-100 text-yellow-800
+                        {% elif subscription.status == 'cancelled' %}bg-red-100 text-red-800
+                        {% else %}bg-gray-100 text-gray-800{% endif %}">
+                        {{ subscription.get_status_display }}
+                    </span>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm">
+                    {% if subscription.expires_at %}
+                    <div class="text-gray-900">{{ subscription.expires_at|date:"M d, Y" }}</div>
+                    <div class="text-gray-500 text-xs">{{ subscription.expires_at|timeuntil }}</div>
+                    {% else %}
+                    <span class="text-gray-400">N/A</span>
+                    {% endif %}
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap">
+                    {% if subscription.auto_renew %}
+                    <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">
+                        <i class="fas fa-check-circle mr-1"></i> Yes
+                    </span>
+                    {% else %}
+                    <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-800">
+                        <i class="fas fa-times-circle mr-1"></i> No
+                    </span>
+                    {% endif %}
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                    <a href="{% url 'manager:subscription_detail' subscription.pk %}" class="text-blue-600 hover:text-blue-900 mr-3">
+                        <i class="fas fa-eye"></i>
+                    </a>
+                    <a href="{% url 'manager:subscription_edit' subscription.pk %}" class="text-green-600 hover:text-green-900 mr-3">
+                        <i class="fas fa-edit"></i>
+                    </a>
+                    {% if subscription.status == 'active' %}
+                    <a href="{% url 'manager:subscription_cancel' subscription.pk %}" class="text-red-600 hover:text-red-900">
+                        <i class="fas fa-ban"></i>
+                    </a>
+                    {% endif %}
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="7" class="px-6 py-12 text-center text-gray-500">
+                    <i class="fas fa-file-invoice text-4xl mb-3 text-gray-300"></i>
+                    <p>No subscriptions found</p>
+                    <a href="{% url 'manager:subscription_create' %}" class="text-blue-600 hover:text-blue-800 mt-2 inline-block">
+                        Create your first subscription
+                    </a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- Pagination -->
+{% if page_obj.has_other_pages %}
+<div class="mt-6 flex items-center justify-between">
+    <div class="text-sm text-gray-700">
+        Showing {{ page_obj.start_index }} to {{ page_obj.end_index }} of {{ page_obj.paginator.count }} results
+    </div>
+    <div class="flex space-x-2">
+        {% if page_obj.has_previous %}
+        <a href="?page=1{% if status_filter %}&status={{ status_filter }}{% endif %}" 
+           class="px-3 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">First</a>
+        <a href="?page={{ page_obj.previous_page_number }}{% if status_filter %}&status={{ status_filter }}{% endif %}" 
+           class="px-3 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">Previous</a>
+        {% endif %}
+        
+        <span class="px-3 py-2 bg-blue-600 text-white rounded-lg">{{ page_obj.number }}</span>
+        
+        {% if page_obj.has_next %}
+        <a href="?page={{ page_obj.next_page_number }}{% if status_filter %}&status={{ status_filter }}{% endif %}" 
+           class="px-3 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">Next</a>
+        <a href="?page={{ page_obj.paginator.num_pages }}{% if status_filter %}&status={{ status_filter }}{% endif %}" 
+           class="px-3 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">Last</a>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
 {% endblock %}

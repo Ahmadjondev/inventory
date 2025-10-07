@@ -31,7 +31,30 @@ urlpatterns = [
     # Subscriptions
     path("subscriptions/", views.subscription_list, name="subscription_list"),
     path(
+        "subscriptions/create/", views.subscription_create, name="subscription_create"
+    ),
+    path(
         "subscriptions/<int:pk>/", views.subscription_detail, name="subscription_detail"
+    ),
+    path(
+        "subscriptions/<int:pk>/edit/",
+        views.subscription_edit,
+        name="subscription_edit",
+    ),
+    path(
+        "subscriptions/<int:pk>/cancel/",
+        views.subscription_cancel,
+        name="subscription_cancel",
+    ),
+    path(
+        "subscriptions/<int:pk>/renew/",
+        views.subscription_renew,
+        name="subscription_renew",
+    ),
+    path(
+        "subscriptions/<int:pk>/change-plan/",
+        views.subscription_change_plan,
+        name="subscription_change_plan",
     ),
     # Invoices
     path("invoices/", views.invoice_list, name="invoice_list"),

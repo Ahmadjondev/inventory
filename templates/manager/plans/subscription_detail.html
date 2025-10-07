@@ -1,10 +1,294 @@
 {% extends 'manager/base.html' %}
 {% block title %}Subscription Detail{% endblock %}
 {% block content %}
-<h2 class="text-3xl font-bold mb-6">Subscription Details</h2>
-<div class="bg-white rounded-lg shadow-md p-6">
-    <p><strong>Tenant:</strong> {{ subscription.tenant.name }}</p>
-    <p><strong>Plan:</strong> {{ subscription.plan.name }}</p>
-    <p><strong>Status:</strong> {{ subscription.get_status_display }}</p>
+<div class="mb-6 flex items-center justify-between">
+    <div>
+        <h2 class="text-3xl font-bold text-gray-900">Subscription Details</h2>
+        <p class="text-gray-600 mt-1">{{ subscription.tenant.name }}</p>
+    </div>
+    <div class="flex space-x-3">
+        <a href="{% url 'manager:subscription_edit' subscription.pk %}" 
+           class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition">
+            <i class="fas fa-edit mr-2"></i> Edit
+        </a>
+        {% if subscription.status == 'active' %}
+        <a href="{% url 'manager:subscription_change_plan' subscription.pk %}" 
+           class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg font-medium transition">
+            <i class="fas fa-exchange-alt mr-2"></i> Change Plan
+        </a>
+        <a href="{% url 'manager:subscription_cancel' subscription.pk %}" 
+           class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-medium transition">
+            <i class="fas fa-ban mr-2"></i> Cancel
+        </a>
+        {% elif subscription.status == 'cancelled' or subscription.status == 'expired' %}
+        <a href="{% url 'manager:subscription_renew' subscription.pk %}" 
+           class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition">
+            <i class="fas fa-redo mr-2"></i> Renew
+        </a>
+        {% endif %}
+    </div>
 </div>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <!-- Main Info -->
+    <div class="lg:col-span-2 space-y-6">
+        <!-- Subscription Overview -->
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <h3 class="text-xl font-bold text-gray-900 mb-4">
+                <i class="fas fa-file-contract text-blue-600 mr-2"></i> Subscription Overview
+            </h3>
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <p class="text-sm text-gray-600">Tenant</p>
+                    <a href="{% url 'manager:tenant_detail' subscription.tenant.pk %}" class="text-lg font-semibold text-blue-600 hover:text-blue-800">
+                        {{ subscription.tenant.name }}
+                    </a>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-600">Status</p>
+                    <span class="inline-flex px-3 py-1 text-sm font-semibold rounded-full mt-1
+                        {% if subscription.status == 'active' %}bg-green-100 text-green-800
+                        {% elif subscription.status == 'pending' %}bg-yellow-100 text-yellow-800
+                        {% elif subscription.status == 'cancelled' %}bg-red-100 text-red-800
+                        {% else %}bg-gray-100 text-gray-800{% endif %}">
+                        {{ subscription.get_status_display }}
+                    </span>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-600">Plan</p>
+                    <p class="text-lg font-semibold text-gray-900">{{ subscription.plan.name }}</p>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-600">Billing Cycle</p>
+                    <p class="text-lg font-semibold text-gray-900">{{ subscription.get_billing_cycle_display }}</p>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-600">Price</p>
+                    <p class="text-lg font-semibold text-gray-900">
+                        {% if subscription.billing_cycle == 'monthly' %}
+                        ${{ subscription.plan.price_monthly }}/month
+                        {% else %}
+                        ${{ subscription.plan.price_yearly }}/year
+                        {% endif %}
+                    </p>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-600">Auto Renew</p>
+                    <p class="text-lg font-semibold text-gray-900">
+                        {% if subscription.auto_renew %}
+                        <span class="text-green-600"><i class="fas fa-check-circle"></i> Yes</span>
+                        {% else %}
+                        <span class="text-red-600"><i class="fas fa-times-circle"></i> No</span>
+                        {% endif %}
+                    </p>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-600">Started</p>
+                    <p class="text-lg font-semibold text-gray-900">{{ subscription.started_at|date:"M d, Y" }}</p>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-600">Expires</p>
+                    <p class="text-lg font-semibold text-gray-900">
+                        {{ subscription.expires_at|date:"M d, Y"|default:"N/A" }}
+                        {% if subscription.expires_at %}
+                        <span class="text-xs text-gray-500 block">{{ subscription.expires_at|timeuntil }} remaining</span>
+                        {% endif %}
+                    </p>
+                </div>
+                {% if subscription.cancelled_at %}
+                <div class="col-span-2">
+                    <p class="text-sm text-gray-600">Cancelled At</p>
+                    <p class="text-lg font-semibold text-red-600">{{ subscription.cancelled_at|date:"M d, Y H:i" }}</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Plan Features -->
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <h3 class="text-xl font-bold text-gray-900 mb-4">
+                <i class="fas fa-list-check text-green-600 mr-2"></i> Plan Features & Limits
+            </h3>
+            <div class="grid grid-cols-2 gap-4">
+                <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <span class="text-gray-700"><i class="fas fa-users text-blue-600 mr-2"></i> Users</span>
+                    <span class="font-bold text-gray-900">{{ subscription.plan.max_users }}</span>
+                </div>
+                <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <span class="text-gray-700"><i class="fas fa-box text-purple-600 mr-2"></i> Products</span>
+                    <span class="font-bold text-gray-900">{{ subscription.plan.max_products }}</span>
+                </div>
+                <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <span class="text-gray-700"><i class="fas fa-warehouse text-orange-600 mr-2"></i> Warehouses</span>
+                    <span class="font-bold text-gray-900">{{ subscription.plan.max_warehouses }}</span>
+                </div>
+                <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <span class="text-gray-700"><i class="fas fa-building text-green-600 mr-2"></i> Branches</span>
+                    <span class="font-bold text-gray-900">{{ subscription.plan.max_branches }}</span>
+                </div>
+            </div>
+            <div class="mt-4 grid grid-cols-2 gap-3">
+                <div class="flex items-center">
+                    <i class="fas fa-{% if subscription.plan.has_advanced_reporting %}check-circle text-green-600{% else %}times-circle text-gray-400{% endif %} mr-2"></i>
+                    <span class="text-sm {% if subscription.plan.has_advanced_reporting %}text-gray-900{% else %}text-gray-500{% endif %}">
+                        Advanced Reporting
+                    </span>
+                </div>
+                <div class="flex items-center">
+                    <i class="fas fa-{% if subscription.plan.has_api_access %}check-circle text-green-600{% else %}times-circle text-gray-400{% endif %} mr-2"></i>
+                    <span class="text-sm {% if subscription.plan.has_api_access %}text-gray-900{% else %}text-gray-500{% endif %}">
+                        API Access
+                    </span>
+                </div>
+                <div class="flex items-center">
+                    <i class="fas fa-{% if subscription.plan.has_multi_currency %}check-circle text-green-600{% else %}times-circle text-gray-400{% endif %} mr-2"></i>
+                    <span class="text-sm {% if subscription.plan.has_multi_currency %}text-gray-900{% else %}text-gray-500{% endif %}">
+                        Multi-Currency
+                    </span>
+                </div>
+                <div class="flex items-center">
+                    <i class="fas fa-{% if subscription.plan.has_offline_support %}check-circle text-green-600{% else %}times-circle text-gray-400{% endif %} mr-2"></i>
+                    <span class="text-sm {% if subscription.plan.has_offline_support %}text-gray-900{% else %}text-gray-500{% endif %}">
+                        Offline Support
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Invoices -->
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-xl font-bold text-gray-900">
+                    <i class="fas fa-file-invoice-dollar text-purple-600 mr-2"></i> Recent Invoices
+                </h3>
+                <a href="{% url 'manager:invoice_list' %}?subscription={{ subscription.pk }}" class="text-blue-600 hover:text-blue-800 text-sm">
+                    View All
+                </a>
+            </div>
+            <div class="space-y-2">
+                {% for invoice in invoices %}
+                <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition">
+                    <div>
+                        <p class="font-semibold text-gray-900">{{ invoice.invoice_number }}</p>
+                        <p class="text-sm text-gray-600">{{ invoice.created_at|date:"M d, Y" }}</p>
+                    </div>
+                    <div class="text-right">
+                        <p class="font-bold text-gray-900">${{ invoice.amount }}</p>
+                        <span class="text-xs px-2 py-1 rounded-full
+                            {% if invoice.status == 'paid' %}bg-green-100 text-green-800
+                            {% elif invoice.status == 'pending' %}bg-yellow-100 text-yellow-800
+                            {% else %}bg-red-100 text-red-800{% endif %}">
+                            {{ invoice.get_status_display }}
+                        </span>
+                    </div>
+                </div>
+                {% empty %}
+                <p class="text-gray-500 text-center py-4">No invoices yet</p>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Recent Payments -->
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-xl font-bold text-gray-900">
+                    <i class="fas fa-credit-card text-green-600 mr-2"></i> Recent Payments
+                </h3>
+                <a href="{% url 'manager:payment_list' %}?subscription={{ subscription.pk }}" class="text-blue-600 hover:text-blue-800 text-sm">
+                    View All
+                </a>
+            </div>
+            <div class="space-y-2">
+                {% for payment in payments %}
+                <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition">
+                    <div>
+                        <p class="font-semibold text-gray-900">{{ payment.transaction_id }}</p>
+                        <p class="text-sm text-gray-600">{{ payment.created_at|date:"M d, Y" }} - {{ payment.get_provider_display }}</p>
+                    </div>
+                    <div class="text-right">
+                        <p class="font-bold text-gray-900">${{ payment.amount }}</p>
+                        <span class="text-xs px-2 py-1 rounded-full
+                            {% if payment.status == 'completed' %}bg-green-100 text-green-800
+                            {% elif payment.status == 'pending' %}bg-yellow-100 text-yellow-800
+                            {% else %}bg-red-100 text-red-800{% endif %}">
+                            {{ payment.get_status_display }}
+                        </span>
+                    </div>
+                </div>
+                {% empty %}
+                <p class="text-gray-500 text-center py-4">No payments yet</p>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Sidebar -->
+    <div class="space-y-6">
+        <!-- Quick Actions -->
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <h3 class="text-lg font-bold text-gray-900 mb-4">
+                <i class="fas fa-bolt text-yellow-600 mr-2"></i> Quick Actions
+            </h3>
+            <div class="space-y-2">
+                <a href="{% url 'manager:tenant_detail' subscription.tenant.pk %}" 
+                   class="block w-full px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg text-center transition">
+                    <i class="fas fa-building mr-2"></i> View Tenant
+                </a>
+                <a href="{% url 'manager:subscription_edit' subscription.pk %}" 
+                   class="block w-full px-4 py-2 bg-blue-100 hover:bg-blue-200 text-blue-800 rounded-lg text-center transition">
+                    <i class="fas fa-edit mr-2"></i> Edit Details
+                </a>
+                {% if subscription.status == 'active' %}
+                <a href="{% url 'manager:subscription_change_plan' subscription.pk %}" 
+                   class="block w-full px-4 py-2 bg-purple-100 hover:bg-purple-200 text-purple-800 rounded-lg text-center transition">
+                    <i class="fas fa-exchange-alt mr-2"></i> Change Plan
+                </a>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Timeline -->
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <h3 class="text-lg font-bold text-gray-900 mb-4">
+                <i class="fas fa-clock text-gray-600 mr-2"></i> Timeline
+            </h3>
+            <div class="space-y-3">
+                <div>
+                    <p class="text-sm text-gray-600">Created</p>
+                    <p class="font-semibold text-gray-900">{{ subscription.created_at|date:"M d, Y H:i" }}</p>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-600">Last Updated</p>
+                    <p class="font-semibold text-gray-900">{{ subscription.updated_at|date:"M d, Y H:i" }}</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Revenue Stats -->
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <h3 class="text-lg font-bold text-gray-900 mb-4">
+                <i class="fas fa-chart-line text-green-600 mr-2"></i> Revenue Stats
+            </h3>
+            <div class="space-y-3">
+                <div>
+                    <p class="text-sm text-gray-600">Total Paid</p>
+                    <p class="text-2xl font-bold text-green-600">
+                        ${% widthratio payments|length 1 1 %}{{ payments|length|floatformat:0 }}
+                    </p>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-600">Expected Revenue</p>
+                    <p class="text-xl font-semibold text-gray-900">
+                        {% if subscription.billing_cycle == 'monthly' %}
+                        ${{ subscription.plan.price_monthly }}/mo
+                        {% else %}
+                        ${{ subscription.plan.price_yearly }}/yr
+                        {% endif %}
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 {% endblock %}
