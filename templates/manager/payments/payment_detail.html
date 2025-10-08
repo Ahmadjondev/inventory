@@ -1,10 +1,224 @@
 {% extends 'manager/base.html' %}
 {% block title %}Payment Detail{% endblock %}
 {% block content %}
-<h2 class="text-3xl font-bold mb-6">Payment Details</h2>
-<div class="bg-white rounded-lg shadow-md p-6">
-    <p><strong>Transaction:</strong> {{ payment.transaction_id }}</p>
-    <p><strong>Amount:</strong> ${{ payment.amount }}</p>
-    <p><strong>Status:</strong> {{ payment.get_status_display }}</p>
+<div class="mb-6 flex items-center justify-between">
+    <div>
+        <h2 class="text-3xl font-bold text-gray-900">Payment {{ payment.transaction_id|truncatechars:30 }}</h2>
+        <p class="text-gray-600 mt-1">Transaction Details</p>
+    </div>
+    <div class="flex space-x-2">
+        <a href="{% url 'manager:payment_list' %}" class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg font-medium transition">
+            <i class="fas fa-arrow-left mr-2"></i> Back to List
+        </a>
+    </div>
 </div>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <!-- Main Payment Info -->
+    <div class="lg:col-span-2 space-y-6">
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <h3 class="text-xl font-bold text-gray-900 mb-4">
+                <i class="fas fa-credit-card text-green-600 mr-2"></i> Payment Information
+            </h3>
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <p class="text-sm text-gray-600">Transaction ID</p>
+                    <p class="text-lg font-semibold text-gray-900 break-all">{{ payment.transaction_id }}</p>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-600">Amount</p>
+                    <p class="text-2xl font-bold text-green-600">${{ payment.amount }} {{ payment.currency }}</p>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-600">Provider</p>
+                    <span class="inline-flex px-3 py-1 text-sm font-semibold rounded-full bg-blue-100 text-blue-800 mt-1">
+                        {{ payment.get_provider_display }}
+                    </span>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-600">Status</p>
+                    <span class="inline-flex px-3 py-1 text-sm font-semibold rounded-full mt-1
+                        {% if payment.status == 'completed' %}bg-green-100 text-green-800
+                        {% elif payment.status == 'pending' %}bg-yellow-100 text-yellow-800
+                        {% elif payment.status == 'processing' %}bg-blue-100 text-blue-800
+                        {% elif payment.status == 'failed' %}bg-red-100 text-red-800
+                        {% else %}bg-gray-100 text-gray-800{% endif %}">
+                        {{ payment.get_status_display }}
+                    </span>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-600">Created At</p>
+                    <p class="font-semibold text-gray-900">{{ payment.created_at|date:"M d, Y H:i" }}</p>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-600">Processed At</p>
+                    <p class="font-semibold text-gray-900">
+                        {% if payment.processed_at %}
+                        {{ payment.processed_at|date:"M d, Y H:i" }}
+                        {% else %}
+                        <span class="text-gray-400">Not processed yet</span>
+                        {% endif %}
+                    </p>
+                </div>
+                {% if payment.error_message %}
+                <div class="col-span-2">
+                    <p class="text-sm text-gray-600 mb-1">Error Message</p>
+                    <div class="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-800">
+                        {{ payment.error_message }}
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Provider Response -->
+        {% if payment.provider_response %}
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <h3 class="text-xl font-bold text-gray-900 mb-4">
+                <i class="fas fa-code text-purple-600 mr-2"></i> Provider Response
+            </h3>
+            <div class="bg-gray-50 rounded-lg p-4 overflow-x-auto">
+                <pre class="text-xs text-gray-800">{{ payment.provider_response|pprint }}</pre>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Related Invoice -->
+        {% if payment.invoice %}
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <h3 class="text-xl font-bold text-gray-900 mb-4">
+                <i class="fas fa-file-invoice text-orange-600 mr-2"></i> Related Invoice
+            </h3>
+            <div class="bg-gray-50 rounded-lg p-4">
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <p class="text-sm text-gray-600">Invoice Number</p>
+                        <p class="font-semibold text-gray-900">{{ payment.invoice.invoice_number }}</p>
+                    </div>
+                    <div>
+                        <p class="text-sm text-gray-600">Invoice Amount</p>
+                        <p class="font-semibold text-gray-900">${{ payment.invoice.amount }} {{ payment.invoice.currency }}</p>
+                    </div>
+                    <div>
+                        <p class="text-sm text-gray-600">Invoice Status</p>
+                        <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full
+                            {% if payment.invoice.status == 'paid' %}bg-green-100 text-green-800
+                            {% elif payment.invoice.status == 'pending' %}bg-yellow-100 text-yellow-800
+                            {% else %}bg-gray-100 text-gray-800{% endif %}">
+                            {{ payment.invoice.get_status_display }}
+                        </span>
+                    </div>
+                    <div>
+                        <p class="text-sm text-gray-600">Due Date</p>
+                        <p class="font-semibold text-gray-900">{{ payment.invoice.due_date|date:"M d, Y" }}</p>
+                    </div>
+                </div>
+                <div class="mt-4">
+                    <a href="{% url 'manager:invoice_detail' payment.invoice.pk %}" 
+                       class="text-blue-600 hover:text-blue-800 text-sm font-medium">
+                        <i class="fas fa-arrow-right mr-1"></i> View Full Invoice
+                    </a>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Sidebar -->
+    <div class="space-y-6">
+        <!-- Subscription Info -->
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <h3 class="text-lg font-bold text-gray-900 mb-4">
+                <i class="fas fa-file-contract text-blue-600 mr-2"></i> Subscription
+            </h3>
+            <div class="space-y-3">
+                <div>
+                    <p class="text-sm text-gray-600">Tenant</p>
+                    <p class="font-semibold text-gray-900">{{ payment.subscription.tenant.name }}</p>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-600">Plan</p>
+                    <p class="font-semibold text-gray-900">{{ payment.subscription.plan.name }}</p>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-600">Billing Cycle</p>
+                    <p class="font-semibold text-gray-900">{{ payment.subscription.get_billing_cycle_display }}</p>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-600">Subscription Status</p>
+                    <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full
+                        {% if payment.subscription.status == 'active' %}bg-green-100 text-green-800
+                        {% elif payment.subscription.status == 'pending' %}bg-yellow-100 text-yellow-800
+                        {% else %}bg-red-100 text-red-800{% endif %}">
+                        {{ payment.subscription.get_status_display }}
+                    </span>
+                </div>
+                <div class="pt-3 border-t">
+                    <a href="{% url 'manager:subscription_detail' payment.subscription.pk %}" 
+                       class="block w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-center rounded-lg font-medium transition">
+                        <i class="fas fa-arrow-right mr-2"></i> View Subscription
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tenant Info -->
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <h3 class="text-lg font-bold text-gray-900 mb-4">
+                <i class="fas fa-building text-purple-600 mr-2"></i> Tenant
+            </h3>
+            <div class="space-y-2">
+                <div>
+                    <p class="text-sm text-gray-600">Name</p>
+                    <p class="font-semibold text-gray-900">{{ payment.subscription.tenant.name }}</p>
+                </div>
+                {% if payment.subscription.tenant.email %}
+                <div>
+                    <p class="text-sm text-gray-600">Email</p>
+                    <p class="text-sm text-gray-900">{{ payment.subscription.tenant.email }}</p>
+                </div>
+                {% endif %}
+                <div>
+                    <p class="text-sm text-gray-600">Status</p>
+                    <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full
+                        {% if payment.subscription.tenant.status == 'active' %}bg-green-100 text-green-800
+                        {% elif payment.subscription.tenant.status == 'trial' %}bg-blue-100 text-blue-800
+                        {% else %}bg-red-100 text-red-800{% endif %}">
+                        {{ payment.subscription.tenant.get_status_display }}
+                    </span>
+                </div>
+                <div class="pt-3 border-t">
+                    <a href="{% url 'manager:tenant_detail' payment.subscription.tenant.pk %}" 
+                       class="text-blue-600 hover:text-blue-800 text-sm font-medium">
+                        <i class="fas fa-arrow-right mr-1"></i> View Tenant
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Quick Stats -->
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <h3 class="text-lg font-bold text-gray-900 mb-4">
+                <i class="fas fa-chart-bar text-green-600 mr-2"></i> Quick Stats
+            </h3>
+            <div class="space-y-3">
+                <div class="flex items-center justify-between">
+                    <span class="text-sm text-gray-600">Payment ID</span>
+                    <span class="font-semibold text-gray-900">#{{ payment.pk }}</span>
+                </div>
+                <div class="flex items-center justify-between">
+                    <span class="text-sm text-gray-600">Subscription ID</span>
+                    <span class="font-semibold text-gray-900">#{{ payment.subscription.pk }}</span>
+                </div>
+                {% if payment.invoice %}
+                <div class="flex items-center justify-between">
+                    <span class="text-sm text-gray-600">Invoice ID</span>
+                    <span class="font-semibold text-gray-900">#{{ payment.invoice.pk }}</span>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
 {% endblock %}

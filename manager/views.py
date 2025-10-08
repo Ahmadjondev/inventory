@@ -6,6 +6,9 @@ from django.utils import timezone
 from django.core.paginator import Paginator
 from datetime import timedelta, date
 from decimal import Decimal
+from django.http import HttpResponse
+from urllib.parse import urlencode
+import uuid
 
 from accounts.models import (
     User,
@@ -202,7 +205,40 @@ def tenant_create(request):
             # Create domain
             Domain.objects.create(domain=domain_name, tenant=tenant, is_primary=True)
 
-            messages.success(request, f'Tenant "{name}" created successfully!')
+            # Create tenant owner (admin user)
+            from django.db import connection
+
+            # Switch to tenant schema to create the user
+            connection.set_tenant(tenant)
+
+            # Create admin user for the tenant
+            owner_username = f"{schema_name}_admin"
+            owner_email = email if email else f"{owner_username}@example.com"
+
+            # Generate a random password
+            import secrets
+            import string
+
+            alphabet = string.ascii_letters + string.digits
+            random_password = "".join(secrets.choice(alphabet) for i in range(12))
+
+            # Create the owner user
+            owner = User.objects.create_user(
+                username=owner_username,
+                email=owner_email,
+                password=random_password,
+                role=User.Roles.ADMIN,
+                first_name="Admin",
+                last_name=name,
+            )
+
+            # Switch back to public schema
+            connection.set_schema_to_public()
+
+            messages.success(
+                request,
+                f'Tenant "{name}" created successfully! Owner username: {owner_username}, Password: {random_password} (Save this password!)',
+            )
             return redirect("manager:tenant_detail", pk=tenant.pk)
         except Exception as e:
             messages.error(request, f"Error creating tenant: {str(e)}")
@@ -669,6 +705,33 @@ def subscription_edit(request, pk):
                 subscription.tenant.max_users = new_plan.max_users
                 subscription.tenant.max_products = new_plan.max_products
                 subscription.tenant.max_warehouses = new_plan.max_warehouses
+
+                # Extend expiry date when plan is changed
+                if subscription.expires_at and subscription.expires_at < timezone.now():
+                    # If expired, set new expiry from now
+                    if subscription.billing_cycle == Subscription.BillingCycle.MONTHLY:
+                        subscription.expires_at = timezone.now() + timedelta(days=30)
+                    else:
+                        subscription.expires_at = timezone.now() + timedelta(days=365)
+                elif subscription.expires_at:
+                    # If still active, extend from current expiry
+                    if subscription.billing_cycle == Subscription.BillingCycle.MONTHLY:
+                        subscription.expires_at = subscription.expires_at + timedelta(
+                            days=30
+                        )
+                    else:
+                        subscription.expires_at = subscription.expires_at + timedelta(
+                            days=365
+                        )
+                else:
+                    # No expiry set, set from now
+                    if subscription.billing_cycle == Subscription.BillingCycle.MONTHLY:
+                        subscription.expires_at = timezone.now() + timedelta(days=30)
+                    else:
+                        subscription.expires_at = timezone.now() + timedelta(days=365)
+
+                # Update tenant paid_until
+                subscription.tenant.paid_until = subscription.expires_at.date()
                 subscription.tenant.save()
 
             subscription.billing_cycle = billing_cycle
@@ -805,8 +868,12 @@ def invoice_list(request):
 
     # Filtering
     status_filter = request.GET.get("status", "")
+    subscription_id = request.GET.get("subscription", "")
+
     if status_filter:
         invoices = invoices.filter(status=status_filter)
+    if subscription_id:
+        invoices = invoices.filter(subscription_id=subscription_id)
 
     # Pagination
     paginator = Paginator(invoices, 20)
@@ -816,6 +883,7 @@ def invoice_list(request):
     context = {
         "page_obj": page_obj,
         "status_filter": status_filter,
+        "subscription_id": subscription_id,
         "status_choices": Invoice.Status.choices,
     }
     return render(request, "manager/invoices/invoice_list.html", context)
@@ -837,20 +905,293 @@ def invoice_detail(request, pk):
 
 @login_required
 @user_passes_test(is_superadmin)
+def invoice_export_excel(request):
+    """Export invoices to Excel (xlsx) applying current filters"""
+    # Build base queryset with same filters as list
+    invoices = Invoice.objects.select_related(
+        "subscription__tenant", "subscription__plan"
+    ).order_by("-created_at")
+
+    status_filter = request.GET.get("status", "")
+    subscription_id = request.GET.get("subscription", "")
+
+    if status_filter:
+        invoices = invoices.filter(status=status_filter)
+    if subscription_id:
+        invoices = invoices.filter(subscription_id=subscription_id)
+
+    # Generate Excel
+    try:
+        from openpyxl import Workbook
+        from openpyxl.utils import get_column_letter
+    except Exception as e:
+        messages.error(
+            request,
+            "Excel export dependencies are missing (openpyxl). Please install requirements.",
+        )
+        # Fallback to list view
+        return redirect("manager:invoice_list")
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Invoices"
+
+    headers = [
+        "Invoice #",
+        "Tenant",
+        "Plan",
+        "Amount",
+        "Currency",
+        "Status",
+        "Period Start",
+        "Period End",
+        "Due Date",
+        "Paid At",
+        "Created At",
+    ]
+    ws.append(headers)
+
+    for inv in invoices:
+        ws.append(
+            [
+                inv.invoice_number,
+                inv.subscription.tenant.name,
+                inv.subscription.plan.name,
+                float(inv.amount),
+                inv.currency,
+                inv.get_status_display(),
+                (
+                    inv.billing_period_start.isoformat()
+                    if inv.billing_period_start
+                    else ""
+                ),
+                inv.billing_period_end.isoformat() if inv.billing_period_end else "",
+                inv.due_date.isoformat() if inv.due_date else "",
+                inv.paid_at.strftime("%Y-%m-%d %H:%M") if inv.paid_at else "",
+                inv.created_at.strftime("%Y-%m-%d %H:%M"),
+            ]
+        )
+
+    # Auto width
+    for i, _ in enumerate(headers, 1):
+        ws.column_dimensions[get_column_letter(i)].width = 18
+
+    response = HttpResponse(
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    filename = "invoices_export.xlsx"
+    response["Content-Disposition"] = f"attachment; filename={filename}"
+    wb.save(response)
+    return response
+
+
+@login_required
+@user_passes_test(is_superadmin)
+def invoice_export_pdf(request):
+    """Export invoices to a simple PDF table applying current filters"""
+    invoices = Invoice.objects.select_related(
+        "subscription__tenant", "subscription__plan"
+    ).order_by("-created_at")
+
+    status_filter = request.GET.get("status", "")
+    subscription_id = request.GET.get("subscription", "")
+
+    if status_filter:
+        invoices = invoices.filter(status=status_filter)
+    if subscription_id:
+        invoices = invoices.filter(subscription_id=subscription_id)
+
+    try:
+        from reportlab.lib.pagesizes import A4, landscape
+        from reportlab.lib import colors
+        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph
+        from reportlab.lib.styles import getSampleStyleSheet
+    except Exception:
+        messages.error(
+            request,
+            "PDF export dependencies are missing (reportlab). Please install requirements.",
+        )
+        return redirect("manager:invoice_list")
+
+    response = HttpResponse(content_type="application/pdf")
+    response["Content-Disposition"] = "attachment; filename=invoices_export.pdf"
+
+    doc = SimpleDocTemplate(
+        response,
+        pagesize=landscape(A4),
+        leftMargin=24,
+        rightMargin=24,
+        topMargin=24,
+        bottomMargin=24,
+    )
+    elements = []
+    styles = getSampleStyleSheet()
+    title = Paragraph("Invoices Export", styles["Title"])
+    elements.append(title)
+
+    data = [
+        [
+            "Invoice #",
+            "Tenant",
+            "Plan",
+            "Amount",
+            "Status",
+            "Period",
+            "Due",
+            "Paid At",
+            "Created",
+        ]
+    ]
+
+    for inv in invoices:
+        period = (
+            f"{inv.billing_period_start} → {inv.billing_period_end}"
+            if inv.billing_period_start and inv.billing_period_end
+            else "-"
+        )
+        data.append(
+            [
+                inv.invoice_number,
+                inv.subscription.tenant.name,
+                inv.subscription.plan.name,
+                f"{inv.currency} {inv.amount}",
+                inv.get_status_display(),
+                period,
+                inv.due_date.isoformat() if inv.due_date else "-",
+                inv.paid_at.strftime("%Y-%m-%d %H:%M") if inv.paid_at else "-",
+                inv.created_at.strftime("%Y-%m-%d %H:%M"),
+            ]
+        )
+
+    table = Table(data, repeatRows=1)
+    table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.black),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("ALIGN", (3, 1), (3, -1), "RIGHT"),
+                ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
+                (
+                    "ROWBACKGROUNDS",
+                    (0, 1),
+                    (-1, -1),
+                    [colors.whitesmoke, colors.lightyellow],
+                ),
+                ("FONTSIZE", (0, 0), (-1, -1), 9),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ]
+        )
+    )
+
+    elements.append(table)
+    doc.build(elements)
+    return response
+
+
+@login_required
+@user_passes_test(is_superadmin)
+def invoice_download_pdf(request, pk):
+    """Generate a PDF for a single invoice"""
+    invoice = get_object_or_404(Invoice, pk=pk)
+
+    try:
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.units import mm
+        from reportlab.pdfgen import canvas
+        from reportlab.lib import colors
+    except Exception:
+        messages.error(request, "PDF generation dependency missing (reportlab).")
+        return redirect("manager:invoice_detail", pk=pk)
+
+    response = HttpResponse(content_type="application/pdf")
+    response["Content-Disposition"] = (
+        f"attachment; filename=invoice_{invoice.invoice_number}.pdf"
+    )
+
+    c = canvas.Canvas(response, pagesize=A4)
+    width, height = A4
+
+    # Header
+    c.setFont("Helvetica-Bold", 18)
+    c.drawString(20 * mm, height - 25 * mm, "INVOICE")
+    c.setFont("Helvetica", 10)
+    c.drawString(20 * mm, height - 32 * mm, f"Invoice #: {invoice.invoice_number}")
+    c.drawString(
+        20 * mm, height - 38 * mm, f"Date: {invoice.created_at.strftime('%Y-%m-%d')}"
+    )
+
+    # Tenant info
+    tenant = invoice.subscription.tenant
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(20 * mm, height - 50 * mm, "Bill To:")
+    c.setFont("Helvetica", 10)
+    c.drawString(20 * mm, height - 56 * mm, tenant.name)
+    if tenant.email:
+        c.drawString(20 * mm, height - 62 * mm, tenant.email)
+    if tenant.address:
+        c.drawString(20 * mm, height - 68 * mm, tenant.address)
+
+    # Summary box
+    c.setStrokeColor(colors.grey)
+    c.rect(120 * mm, height - 70 * mm, 70 * mm, 30 * mm, stroke=1, fill=0)
+    c.setFont("Helvetica", 10)
+    c.drawString(125 * mm, height - 50 * mm, f"Status: {invoice.get_status_display()}")
+    c.drawString(
+        125 * mm, height - 56 * mm, f"Amount: {invoice.currency} {invoice.amount}"
+    )
+    c.drawString(125 * mm, height - 62 * mm, f"Due: {invoice.due_date.isoformat()}")
+
+    # Period
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(20 * mm, height - 85 * mm, "Billing Period")
+    c.setFont("Helvetica", 10)
+    c.drawString(
+        20 * mm,
+        height - 92 * mm,
+        f"{invoice.billing_period_start.isoformat()} to {invoice.billing_period_end.isoformat()}",
+    )
+
+    # Notes
+    if invoice.notes:
+        c.setFont("Helvetica-Bold", 12)
+        c.drawString(20 * mm, height - 110 * mm, "Notes")
+        c.setFont("Helvetica", 10)
+        text_obj = c.beginText(20 * mm, height - 117 * mm)
+        for line in invoice.notes.splitlines():
+            text_obj.textLine(line)
+        c.drawText(text_obj)
+
+    c.showPage()
+    c.save()
+    return response
+
+
+@login_required
+@user_passes_test(is_superadmin)
 def payment_list(request):
-    """List all payments"""
+    """List all payments with comprehensive filtering"""
     payments = Payment.objects.select_related(
-        "subscription__tenant", "invoice"
+        "subscription__tenant", "subscription__plan", "invoice"
     ).order_by("-created_at")
 
     # Filtering
     status_filter = request.GET.get("status", "")
     provider_filter = request.GET.get("provider", "")
+    subscription_id = request.GET.get("subscription", "")
+    invoice_id = request.GET.get("invoice", "")
+    tenant_search = request.GET.get("tenant", "")
 
     if status_filter:
         payments = payments.filter(status=status_filter)
     if provider_filter:
         payments = payments.filter(provider=provider_filter)
+    if subscription_id:
+        payments = payments.filter(subscription_id=subscription_id)
+    if invoice_id:
+        payments = payments.filter(invoice_id=invoice_id)
+    if tenant_search:
+        payments = payments.filter(subscription__tenant__name__icontains=tenant_search)
 
     # Pagination
     paginator = Paginator(payments, 20)
@@ -861,6 +1202,9 @@ def payment_list(request):
         "page_obj": page_obj,
         "status_filter": status_filter,
         "provider_filter": provider_filter,
+        "subscription_id": subscription_id,
+        "invoice_id": invoice_id,
+        "tenant_search": tenant_search,
         "status_choices": Payment.Status.choices,
         "provider_choices": Payment.Provider.choices,
     }
@@ -870,11 +1214,300 @@ def payment_list(request):
 @login_required
 @user_passes_test(is_superadmin)
 def payment_detail(request, pk):
-    """View payment details"""
+    """View payment details with full context"""
     payment = get_object_or_404(Payment, pk=pk)
 
-    context = {"payment": payment}
+    context = {
+        "payment": payment,
+    }
     return render(request, "manager/payments/payment_detail.html", context)
+
+
+@login_required
+@user_passes_test(is_superadmin)
+def payment_create(request):
+    """Create a manual payment for a subscription"""
+    if request.method == "POST":
+        subscription_id = request.POST.get("subscription")
+        amount = request.POST.get("amount")
+        provider = request.POST.get("provider")
+        notes = request.POST.get("notes", "")
+
+        try:
+            subscription = get_object_or_404(Subscription, pk=subscription_id)
+
+            # Generate transaction ID
+            transaction_id = (
+                f"MAN-{timezone.now():%Y%m%d}-{uuid.uuid4().hex[:8].upper()}"
+            )
+
+            # Create payment
+            payment = Payment.objects.create(
+                subscription=subscription,
+                provider=provider,
+                transaction_id=transaction_id,
+                amount=Decimal(amount),
+                currency="USD",
+                status=Payment.Status.COMPLETED,
+                processed_at=timezone.now(),
+                error_message=notes,
+            )
+
+            # Extend subscription expiry date
+            if subscription.expires_at and subscription.expires_at < timezone.now():
+                # If expired, set new expiry from now
+                if subscription.billing_cycle == Subscription.BillingCycle.MONTHLY:
+                    subscription.expires_at = timezone.now() + timedelta(days=30)
+                else:
+                    subscription.expires_at = timezone.now() + timedelta(days=365)
+            elif subscription.expires_at:
+                # If still active, extend from current expiry
+                if subscription.billing_cycle == Subscription.BillingCycle.MONTHLY:
+                    subscription.expires_at = subscription.expires_at + timedelta(
+                        days=30
+                    )
+                else:
+                    subscription.expires_at = subscription.expires_at + timedelta(
+                        days=365
+                    )
+            else:
+                # No expiry set, set from now
+                if subscription.billing_cycle == Subscription.BillingCycle.MONTHLY:
+                    subscription.expires_at = timezone.now() + timedelta(days=30)
+                else:
+                    subscription.expires_at = timezone.now() + timedelta(days=365)
+
+            subscription.status = Subscription.Status.ACTIVE
+            subscription.save()
+
+            # Update tenant status
+            tenant = subscription.tenant
+            tenant.status = Client.Status.ACTIVE
+            tenant.paid_until = subscription.expires_at.date()
+            tenant.save()
+
+            messages.success(
+                request,
+                f"Payment of ${amount} created successfully for {subscription.tenant.name}. Subscription extended to {subscription.expires_at.date()}.",
+            )
+            return redirect("manager:payment_detail", pk=payment.pk)
+        except Exception as e:
+            messages.error(request, f"Error creating payment: {str(e)}")
+
+    # Get all active subscriptions
+    subscriptions = Subscription.objects.select_related("tenant", "plan").order_by(
+        "-created_at"
+    )
+
+    # Check if subscription is pre-selected via query param
+    preselected_subscription_id = request.GET.get("subscription")
+    preselected_subscription = None
+    if preselected_subscription_id:
+        try:
+            preselected_subscription = Subscription.objects.get(
+                pk=preselected_subscription_id
+            )
+        except Subscription.DoesNotExist:
+            pass
+
+    context = {
+        "action": "Create",
+        "subscriptions": subscriptions,
+        "provider_choices": Payment.Provider.choices,
+        "preselected_subscription": preselected_subscription,
+    }
+    return render(request, "manager/payments/payment_form.html", context)
+
+
+@login_required
+@user_passes_test(is_superadmin)
+def payment_export_excel(request):
+    """Export payments to Excel applying current filters"""
+    payments = Payment.objects.select_related(
+        "subscription__tenant", "subscription__plan", "invoice"
+    ).order_by("-created_at")
+
+    # Apply same filters as list view
+    status_filter = request.GET.get("status", "")
+    provider_filter = request.GET.get("provider", "")
+    subscription_id = request.GET.get("subscription", "")
+    invoice_id = request.GET.get("invoice", "")
+    tenant_search = request.GET.get("tenant", "")
+
+    if status_filter:
+        payments = payments.filter(status=status_filter)
+    if provider_filter:
+        payments = payments.filter(provider=provider_filter)
+    if subscription_id:
+        payments = payments.filter(subscription_id=subscription_id)
+    if invoice_id:
+        payments = payments.filter(invoice_id=invoice_id)
+    if tenant_search:
+        payments = payments.filter(subscription__tenant__name__icontains=tenant_search)
+
+    try:
+        from openpyxl import Workbook
+        from openpyxl.utils import get_column_letter
+    except Exception:
+        messages.error(request, "Excel export requires openpyxl library.")
+        return redirect("manager:payment_list")
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Payments"
+
+    headers = [
+        "Transaction ID",
+        "Tenant",
+        "Plan",
+        "Invoice #",
+        "Provider",
+        "Amount",
+        "Currency",
+        "Status",
+        "Processed At",
+        "Created At",
+    ]
+    ws.append(headers)
+
+    for payment in payments:
+        ws.append(
+            [
+                payment.transaction_id,
+                payment.subscription.tenant.name,
+                payment.subscription.plan.name,
+                payment.invoice.invoice_number if payment.invoice else "N/A",
+                payment.get_provider_display(),
+                float(payment.amount),
+                payment.currency,
+                payment.get_status_display(),
+                (
+                    payment.processed_at.strftime("%Y-%m-%d %H:%M")
+                    if payment.processed_at
+                    else ""
+                ),
+                payment.created_at.strftime("%Y-%m-%d %H:%M"),
+            ]
+        )
+
+    # Auto width
+    for i, _ in enumerate(headers, 1):
+        ws.column_dimensions[get_column_letter(i)].width = 18
+
+    response = HttpResponse(
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    response["Content-Disposition"] = "attachment; filename=payments_export.xlsx"
+    wb.save(response)
+    return response
+
+
+@login_required
+@user_passes_test(is_superadmin)
+def payment_export_pdf(request):
+    """Export payments to PDF applying current filters"""
+    payments = Payment.objects.select_related(
+        "subscription__tenant", "subscription__plan", "invoice"
+    ).order_by("-created_at")
+
+    # Apply same filters
+    status_filter = request.GET.get("status", "")
+    provider_filter = request.GET.get("provider", "")
+    subscription_id = request.GET.get("subscription", "")
+    invoice_id = request.GET.get("invoice", "")
+    tenant_search = request.GET.get("tenant", "")
+
+    if status_filter:
+        payments = payments.filter(status=status_filter)
+    if provider_filter:
+        payments = payments.filter(provider=provider_filter)
+    if subscription_id:
+        payments = payments.filter(subscription_id=subscription_id)
+    if invoice_id:
+        payments = payments.filter(invoice_id=invoice_id)
+    if tenant_search:
+        payments = payments.filter(subscription__tenant__name__icontains=tenant_search)
+
+    try:
+        from reportlab.lib.pagesizes import A4, landscape
+        from reportlab.lib import colors
+        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph
+        from reportlab.lib.styles import getSampleStyleSheet
+    except Exception:
+        messages.error(request, "PDF export requires reportlab library.")
+        return redirect("manager:payment_list")
+
+    response = HttpResponse(content_type="application/pdf")
+    response["Content-Disposition"] = "attachment; filename=payments_export.pdf"
+
+    doc = SimpleDocTemplate(
+        response,
+        pagesize=landscape(A4),
+        leftMargin=24,
+        rightMargin=24,
+        topMargin=24,
+        bottomMargin=24,
+    )
+    elements = []
+    styles = getSampleStyleSheet()
+    title = Paragraph("Payments Export", styles["Title"])
+    elements.append(title)
+
+    data = [
+        [
+            "Transaction",
+            "Tenant",
+            "Provider",
+            "Amount",
+            "Status",
+            "Invoice",
+            "Processed",
+            "Created",
+        ]
+    ]
+
+    for payment in payments:
+        data.append(
+            [
+                payment.transaction_id[:20],
+                payment.subscription.tenant.name[:20],
+                payment.get_provider_display(),
+                f"{payment.currency} {payment.amount}",
+                payment.get_status_display(),
+                payment.invoice.invoice_number if payment.invoice else "-",
+                (
+                    payment.processed_at.strftime("%Y-%m-%d %H:%M")
+                    if payment.processed_at
+                    else "-"
+                ),
+                payment.created_at.strftime("%Y-%m-%d %H:%M"),
+            ]
+        )
+
+    table = Table(data, repeatRows=1)
+    table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.black),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("ALIGN", (3, 1), (3, -1), "RIGHT"),
+                ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
+                (
+                    "ROWBACKGROUNDS",
+                    (0, 1),
+                    (-1, -1),
+                    [colors.whitesmoke, colors.lightyellow],
+                ),
+                ("FONTSIZE", (0, 0), (-1, -1), 8),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ]
+        )
+    )
+
+    elements.append(table)
+    doc.build(elements)
+    return response
 
 
 @login_required

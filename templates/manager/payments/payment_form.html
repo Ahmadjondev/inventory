@@ -1,0 +1,94 @@
+{% extends 'manager/base.html' %}
+
+{% block title %}{{ action }} Payment{% endblock %}
+
+{% block content %}
+<div class="mb-6">
+    <h2 class="text-3xl font-bold text-gray-900">{{ action }} Manual Payment</h2>
+    <p class="text-gray-600 mt-1">Record a manual payment for a subscription</p>
+</div>
+
+<div class="bg-white rounded-lg shadow-md p-8 max-w-3xl">
+    <form method="post">
+        {% csrf_token %}
+        
+        <div class="space-y-6">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">
+                    Subscription <span class="text-red-500">*</span>
+                </label>
+                <select name="subscription" required 
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                    <option value="">Select a subscription...</option>
+                    {% for sub in subscriptions %}
+                    <option value="{{ sub.id }}" 
+                            {% if preselected_subscription and preselected_subscription.id == sub.id %}selected{% endif %}>
+                        {{ sub.tenant.name }} - {{ sub.plan.name }} ({{ sub.get_billing_cycle_display }})
+                        {% if sub.expires_at %} - Expires: {{ sub.expires_at|date:"M d, Y" }}{% endif %}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">
+                    Amount <span class="text-red-500">*</span>
+                </label>
+                <div class="relative">
+                    <span class="absolute left-4 top-2 text-gray-600 text-lg">$</span>
+                    <input type="number" name="amount" step="0.01" min="0" required
+                           placeholder="0.00"
+                           class="w-full pl-8 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                </div>
+            </div>
+            
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">
+                    Payment Provider <span class="text-red-500">*</span>
+                </label>
+                <select name="provider" required
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                    {% for value, label in provider_choices %}
+                    <option value="{{ value }}">{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Notes</label>
+                <textarea name="notes" rows="4" 
+                          placeholder="Optional notes about this payment..."
+                          class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"></textarea>
+                <p class="text-xs text-gray-500 mt-1">Add any relevant information about this manual payment</p>
+            </div>
+        </div>
+        
+        <div class="mt-8 flex items-center justify-end space-x-4">
+            <a href="{% url 'manager:payment_list' %}" 
+               class="px-6 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium transition">
+                Cancel
+            </a>
+            <button type="submit" 
+                    class="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition">
+                <i class="fas fa-save mr-2"></i> {{ action }} Payment
+            </button>
+        </div>
+    </form>
+</div>
+
+<div class="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+    <div class="flex items-start">
+        <i class="fas fa-info-circle text-blue-600 mt-1 mr-3"></i>
+        <div class="text-sm text-blue-800">
+            <p class="font-semibold mb-2">About Manual Payments</p>
+            <ul class="list-disc list-inside space-y-1">
+                <li>This will create a completed payment record immediately</li>
+                <li>The subscription expiry date will be automatically extended based on the billing cycle</li>
+                <li>The tenant status will be updated to Active</li>
+                <li>Use this for cash payments, bank transfers, or other offline payment methods</li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

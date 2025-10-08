@@ -1,10 +1,80 @@
 {% extends 'manager/base.html' %}
 {% block title %}Invoice Detail{% endblock %}
 {% block content %}
-<h2 class="text-3xl font-bold mb-6">Invoice Details</h2>
-<div class="bg-white rounded-lg shadow-md p-6">
-    <p><strong>Invoice:</strong> {{ invoice.invoice_number }}</p>
-    <p><strong>Amount:</strong> ${{ invoice.amount }}</p>
-    <p><strong>Status:</strong> {{ invoice.get_status_display }}</p>
+<div class="mb-6 flex items-center justify-between">
+    <div>
+        <h2 class="text-3xl font-bold text-gray-900">Invoice {{ invoice.invoice_number }}</h2>
+        <p class="text-gray-600 mt-1">Tenant: {{ invoice.subscription.tenant.name }}</p>
+    </div>
+    <div class="flex space-x-2">
+        <a href="{% url 'manager:invoice_download_pdf' invoice.pk %}"
+           class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-medium transition">
+            <i class="fas fa-file-pdf mr-2"></i> Download PDF
+        </a>
+    </div>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <div class="lg:col-span-2 space-y-6">
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <p class="text-sm text-gray-600">Amount</p>
+                    <p class="text-2xl font-bold text-gray-900">${{ invoice.amount }} {{ invoice.currency }}</p>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-600">Status</p>
+                    <span class="inline-flex px-3 py-1 text-sm font-semibold rounded-full mt-1
+                        {% if invoice.status == 'paid' %}bg-green-100 text-green-800
+                        {% elif invoice.status == 'pending' %}bg-yellow-100 text-yellow-800
+                        {% elif invoice.status == 'failed' %}bg-red-100 text-red-800
+                        {% else %}bg-gray-100 text-gray-800{% endif %}">
+                        {{ invoice.get_status_display }}
+                    </span>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-600">Billing Period</p>
+                    <p class="font-semibold text-gray-900">{{ invoice.billing_period_start }} → {{ invoice.billing_period_end }}</p>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-600">Due Date</p>
+                    <p class="font-semibold text-gray-900">{{ invoice.due_date|date:"M d, Y" }}</p>
+                </div>
+                {% if invoice.paid_at %}
+                <div>
+                    <p class="text-sm text-gray-600">Paid At</p>
+                    <p class="font-semibold text-green-700">{{ invoice.paid_at|date:"M d, Y H:i" }}</p>
+                </div>
+                {% endif %}
+                <div>
+                    <p class="text-sm text-gray-600">Created</p>
+                    <p class="font-semibold text-gray-900">{{ invoice.created_at|date:"M d, Y H:i" }}</p>
+                </div>
+            </div>
+            {% if invoice.notes %}
+            <div class="mt-6">
+                <p class="text-sm text-gray-600 mb-1">Notes</p>
+                <div class="p-4 bg-gray-50 rounded-lg border text-sm text-gray-800 whitespace-pre-line">{{ invoice.notes }}</div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="space-y-6">
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <h3 class="text-lg font-bold text-gray-900 mb-4"><i class="fas fa-info-circle text-blue-600 mr-2"></i> Subscription</h3>
+            <p class="text-sm"><span class="text-gray-600">Plan:</span> <span class="font-semibold">{{ invoice.subscription.plan.name }}</span></p>
+            <p class="text-sm"><span class="text-gray-600">Billing:</span> <span class="font-semibold">{{ invoice.subscription.get_billing_cycle_display }}</span></p>
+            <p class="text-sm"><span class="text-gray-600">Status:</span> 
+                <span class="font-semibold">{{ invoice.subscription.get_status_display }}</span>
+            </p>
+            <div class="mt-3">
+                <a href="{% url 'manager:subscription_detail' invoice.subscription.pk %}" 
+                   class="text-blue-600 hover:text-blue-800 text-sm font-medium">
+                    View Subscription
+                </a>
+            </div>
+        </div>
+    </div>
 </div>
 {% endblock %}

@@ -206,13 +206,36 @@ class SubscriptionViewSet(viewsets.ModelViewSet):
 
         # Update subscription
         subscription.plan = new_plan
+        # Extend expiry date when plan is changed
+        if subscription.expires_at and subscription.expires_at < timezone.now():
+            # If expired, set new expiry from now
+            if subscription.billing_cycle == Subscription.BillingCycle.MONTHLY:
+                subscription.expires_at = timezone.now() + timedelta(days=30)
+            else:
+                subscription.expires_at = timezone.now() + timedelta(days=365)
+        elif subscription.expires_at:
+            # If still active, extend from current expiry
+            if subscription.billing_cycle == Subscription.BillingCycle.MONTHLY:
+                subscription.expires_at = subscription.expires_at + timedelta(days=30)
+            else:
+                subscription.expires_at = subscription.expires_at + timedelta(days=365)
+        else:
+            # No expiry set, set from now
+            if subscription.billing_cycle == Subscription.BillingCycle.MONTHLY:
+                subscription.expires_at = timezone.now() + timedelta(days=30)
+            else:
+                subscription.expires_at = timezone.now() + timedelta(days=365)
+
+        subscription.status = Subscription.Status.ACTIVE
         subscription.save()
 
-        # Update tenant limits
+        # Update tenant limits and status
         tenant = subscription.tenant
         tenant.max_users = new_plan.max_users
         tenant.max_products = new_plan.max_products
         tenant.max_warehouses = new_plan.max_warehouses
+        tenant.status = Client.Status.ACTIVE
+        tenant.paid_until = subscription.expires_at.date()
         tenant.save()
 
         return Response(self.get_serializer(subscription).data)
@@ -313,13 +336,34 @@ class PaymentViewSet(viewsets.ModelViewSet):
         payment.processed_at = timezone.now()
         payment.save()
 
-        # Update subscription
-        if subscription.billing_cycle == Subscription.BillingCycle.MONTHLY:
-            subscription.expires_at = timezone.now() + timedelta(days=30)
+        # Update subscription and extend expiry date
+        if subscription.expires_at and subscription.expires_at < timezone.now():
+            # If expired, set new expiry from now
+            if subscription.billing_cycle == Subscription.BillingCycle.MONTHLY:
+                subscription.expires_at = timezone.now() + timedelta(days=30)
+            else:
+                subscription.expires_at = timezone.now() + timedelta(days=365)
+        elif subscription.expires_at:
+            # If still active, extend from current expiry
+            if subscription.billing_cycle == Subscription.BillingCycle.MONTHLY:
+                subscription.expires_at = subscription.expires_at + timedelta(days=30)
+            else:
+                subscription.expires_at = subscription.expires_at + timedelta(days=365)
         else:
-            subscription.expires_at = timezone.now() + timedelta(days=365)
+            # No expiry set, set from now
+            if subscription.billing_cycle == Subscription.BillingCycle.MONTHLY:
+                subscription.expires_at = timezone.now() + timedelta(days=30)
+            else:
+                subscription.expires_at = timezone.now() + timedelta(days=365)
+
         subscription.status = Subscription.Status.ACTIVE
         subscription.save()
+
+        # Update tenant status and paid_until
+        tenant = subscription.tenant
+        tenant.status = Client.Status.ACTIVE
+        tenant.paid_until = subscription.expires_at.date()
+        tenant.save()
 
         return Response(PaymentSerializer(payment).data, status=status.HTTP_201_CREATED)
 

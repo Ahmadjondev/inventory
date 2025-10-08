@@ -138,6 +138,29 @@ class ClientCreateSerializer(serializers.ModelSerializer):
         # Create domain
         Domain.objects.create(domain=domain_name, tenant=tenant, is_primary=True)
 
+        # Create tenant owner (admin user)
+        from django.db import connection
+
+        # Switch to tenant schema to create the user
+        connection.set_tenant(tenant)
+
+        # Create admin user for the tenant
+        owner_username = f"{schema_name}_admin"
+        owner_email = validated_data.get("email", f"{owner_username}@example.com")
+
+        # Create the owner user
+        owner = User.objects.create_user(
+            username=owner_username,
+            email=owner_email,
+            password=User.objects.make_random_password(length=12),
+            role=User.Roles.ADMIN,
+            first_name="Admin",
+            last_name=validated_data["name"],
+        )
+
+        # Switch back to public schema
+        connection.set_schema_to_public()
+
         return tenant
 
 

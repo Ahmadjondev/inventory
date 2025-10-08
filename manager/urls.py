@@ -59,9 +59,27 @@ urlpatterns = [
     # Invoices
     path("invoices/", views.invoice_list, name="invoice_list"),
     path("invoices/<int:pk>/", views.invoice_detail, name="invoice_detail"),
+    path(
+        "invoices/export/excel/",
+        views.invoice_export_excel,
+        name="invoice_export_excel",
+    ),
+    path("invoices/export/pdf/", views.invoice_export_pdf, name="invoice_export_pdf"),
+    path(
+        "invoices/<int:pk>/download/pdf/",
+        views.invoice_download_pdf,
+        name="invoice_download_pdf",
+    ),
     # Payments
     path("payments/", views.payment_list, name="payment_list"),
+    path("payments/create/", views.payment_create, name="payment_create"),
     path("payments/<int:pk>/", views.payment_detail, name="payment_detail"),
+    path(
+        "payments/export/excel/",
+        views.payment_export_excel,
+        name="payment_export_excel",
+    ),
+    path("payments/export/pdf/", views.payment_export_pdf, name="payment_export_pdf"),
     # Announcements
     path("announcements/", views.announcement_list, name="announcement_list"),
     path(
