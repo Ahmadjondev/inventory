@@ -147,7 +147,6 @@ class ProductViewSet(viewsets.ModelViewSet):
                 | Q(oem_number__icontains=query)
                 | Q(barcodes__code__icontains=query)
             ).distinct()
-
         if category:
             queryset = queryset.filter(category_id=category)
 

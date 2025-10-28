@@ -36,7 +36,7 @@ from .models import (
 
 @admin.register(Supplier)
 class SupplierAdmin(admin.ModelAdmin):
-    list_display = ("name", "contact", "created_at")
+    list_display = ("name", "phone", "created_at")
     search_fields = ("name",)
 
 

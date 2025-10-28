@@ -18,7 +18,7 @@ class TimeStampedModel(models.Model):
 
 class Supplier(TimeStampedModel):
     name = models.CharField(max_length=255, unique=True)
-    contact = models.CharField(max_length=255, blank=True)
+    phone = models.CharField(max_length=24, blank=True)
 
     def __str__(self):
         return self.name

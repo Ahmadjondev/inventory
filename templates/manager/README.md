@@ -22,7 +22,7 @@ templates/manager/
 │   ├── announcement_list.html
 │   ├── announcement_form.html
 │   └── announcement_confirm_delete.html
-│
+│'
 ├── dashboard/                # Dashboard templates
 │   └── dashboard.html        # Main entry point
 │
