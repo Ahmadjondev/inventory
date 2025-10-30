@@ -237,9 +237,10 @@ def tenant_create(request):
                     first_name="Admin",
                     last_name=name,
                     phone=phone,
+                    tenant_schema=schema_name,  # Link user to tenant
                 )
                 logger.info(
-                    f"User {owner_username} created in schema {connection.schema_name}"
+                    f"User {owner_username} created in schema {connection.schema_name} with tenant_schema={schema_name}"
                 )
             finally:
                 # Always switch back to public schema
