@@ -51,9 +51,9 @@ from inventory.views import (
     InventoryCheckViewSet,
 )
 from rest_framework_simplejwt.views import (
-    TokenObtainPairView,
     TokenRefreshView,
 )
+from accounts.jwt_views import TenantAwareTokenObtainPairView
 from drf_spectacular.views import (
     SpectacularAPIView,
     SpectacularSwaggerView,
@@ -101,6 +101,7 @@ router.register(r"reports", ReportingViewSet, basename="report")
 
 urlpatterns = [
     # OpenAPI schema & docs
+    path("admin/", admin.site.urls),
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
     path(
         "api/docs/",
@@ -112,7 +113,11 @@ urlpatterns = [
         SpectacularRedocView.as_view(url_name="schema"),
         name="redoc",
     ),
-    path("api/auth/token/", TokenObtainPairView.as_view(), name="token_obtain_pair"),
+    path(
+        "api/auth/token/",
+        TenantAwareTokenObtainPairView.as_view(),
+        name="token_obtain_pair",
+    ),
     path("api/auth/token/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
     path("api/", include(router.urls)),
 ]
@@ -129,7 +134,6 @@ def admin_urls():
     from django.urls import path
 
     return [
-        path("admin/", admin.site.urls),
         path("", include("manager.urls")),
     ]
 

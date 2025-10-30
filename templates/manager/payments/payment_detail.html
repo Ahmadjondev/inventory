@@ -172,10 +172,10 @@
                     <p class="text-sm text-gray-600">Name</p>
                     <p class="font-semibold text-gray-900">{{ payment.subscription.tenant.name }}</p>
                 </div>
-                {% if payment.subscription.tenant.email %}
+                {% if payment.subscription.tenant.phone %}
                 <div>
-                    <p class="text-sm text-gray-600">Email</p>
-                    <p class="text-sm text-gray-900">{{ payment.subscription.tenant.email }}</p>
+                    <p class="text-sm text-gray-600">Phone</p>
+                    <p class="text-sm text-gray-900">{{ payment.subscription.tenant.phone }}</p>
                 </div>
                 {% endif %}
                 <div>

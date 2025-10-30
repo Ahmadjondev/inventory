@@ -23,7 +23,6 @@ class UserSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "username",
-            "email",
             "first_name",
             "last_name",
             "role",
@@ -42,7 +41,6 @@ class UserCreateSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "username",
-            "email",
             "password",
             "first_name",
             "last_name",
@@ -51,7 +49,17 @@ class UserCreateSerializer(serializers.ModelSerializer):
         ]
 
     def create(self, validated_data):
+        from django.db import connection
+
         password = validated_data.pop("password")
+
+        # Automatically set tenant_schema based on current schema
+        # (unless it's a SuperAdmin being created in public schema)
+        current_schema = connection.schema_name
+        if current_schema != "public":
+            validated_data["tenant_schema"] = current_schema
+
+        # Create user in current schema context
         user = User.objects.create(**validated_data)
         user.set_password(password)
         user.save()
@@ -81,7 +89,6 @@ class ClientSerializer(serializers.ModelSerializer):
             "name",
             "address",
             "phone",
-            "email",
             "status",
             "paid_until",
             "on_trial",
@@ -108,7 +115,6 @@ class ClientCreateSerializer(serializers.ModelSerializer):
             "name",
             "address",
             "phone",
-            "email",
             "domain",
             "max_users",
             "max_products",
@@ -138,28 +144,47 @@ class ClientCreateSerializer(serializers.ModelSerializer):
         # Create domain
         Domain.objects.create(domain=domain_name, tenant=tenant, is_primary=True)
 
-        # Create tenant owner (admin user)
+        # Create tenant owner (admin user) in tenant schema
         from django.db import connection
+        from django.db import reset_queries
+        import logging
 
-        # Switch to tenant schema to create the user
-        connection.set_tenant(tenant)
+        logger = logging.getLogger(__name__)
 
-        # Create admin user for the tenant
-        owner_username = f"{schema_name}_admin"
-        owner_email = validated_data.get("email", f"{owner_username}@example.com")
+        try:
+            # Switch to tenant schema to create the user
+            logger.info(f"API: Switching to tenant schema: {tenant.schema_name}")
+            connection.set_tenant(tenant)
 
-        # Create the owner user
-        owner = User.objects.create_user(
-            username=owner_username,
-            email=owner_email,
-            password=User.objects.make_random_password(length=12),
-            role=User.Roles.ADMIN,
-            first_name="Admin",
-            last_name=validated_data["name"],
-        )
+            # Force a database query to ensure the connection is in the right schema
+            reset_queries()
 
-        # Switch back to public schema
-        connection.set_schema_to_public()
+            # Verify we're in the correct schema
+            logger.info(f"API: Current schema: {connection.schema_name}")
+
+            # Create admin user for the tenant
+            owner_username = f"{schema_name}_admin"
+            owner_phone = validated_data.get("phone", "")
+
+            # Create the owner user in tenant schema
+            owner = User.objects.create_user(
+                username=owner_username,
+                password=User.objects.make_random_password(length=12),
+                role=User.Roles.ADMIN,
+                first_name="Admin",
+                last_name=validated_data["name"],
+                phone=owner_phone,
+                tenant_schema=tenant.schema_name,  # Set tenant membership
+            )
+            logger.info(
+                f"API: User {owner_username} created in schema {connection.schema_name} with tenant_schema={tenant.schema_name}"
+            )
+        finally:
+            # Always switch back to public schema
+            connection.set_schema_to_public()
+            logger.info(
+                f"API: Switched back to public schema: {connection.schema_name}"
+            )
 
         return tenant
 
@@ -258,15 +283,12 @@ class PaymentCheckoutSerializer(serializers.Serializer):
 
 
 class AnnouncementSerializer(serializers.ModelSerializer):
-    created_by_name = serializers.CharField(
-        source="created_by.username", read_only=True
-    )
     target_tenant_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Announcement
         fields = "__all__"
-        read_only_fields = ["id", "created_by", "created_at", "updated_at"]
+        read_only_fields = ["id", "created_by_username", "created_at", "updated_at"]
 
     def get_target_tenant_count(self, obj):
         return obj.target_tenants.count()
@@ -274,17 +296,18 @@ class AnnouncementSerializer(serializers.ModelSerializer):
 
 class SupportTicketSerializer(serializers.ModelSerializer):
     tenant_name = serializers.CharField(source="tenant.name", read_only=True)
-    created_by_name = serializers.CharField(
-        source="created_by.username", read_only=True
-    )
-    assigned_to_name = serializers.CharField(
-        source="assigned_to.username", read_only=True
-    )
 
     class Meta:
         model = SupportTicket
         fields = "__all__"
-        read_only_fields = ["id", "ticket_number", "created_at", "updated_at"]
+        read_only_fields = [
+            "id",
+            "ticket_number",
+            "created_by_username",
+            "assigned_to_username",
+            "created_at",
+            "updated_at",
+        ]
 
 
 class SupportTicketCreateSerializer(serializers.ModelSerializer):
@@ -296,7 +319,7 @@ class SupportTicketCreateSerializer(serializers.ModelSerializer):
         # Generate ticket number
         ticket_number = f"TKT-{timezone.now():%Y%m%d}-{uuid.uuid4().hex[:6].upper()}"
         validated_data["ticket_number"] = ticket_number
-        validated_data["created_by"] = self.context["request"].user
+        validated_data["created_by_username"] = self.context["request"].user.username
         return super().create(validated_data)
 
 

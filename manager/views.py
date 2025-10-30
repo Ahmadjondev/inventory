@@ -10,8 +10,8 @@ from django.http import HttpResponse
 from urllib.parse import urlencode
 import uuid
 
+from django.contrib.auth import get_user_model
 from accounts.models import (
-    User,
     Client,
     Domain,
     SubscriptionPlan,
@@ -22,6 +22,8 @@ from accounts.models import (
     SupportTicket,
     PlatformAnalytics,
 )
+
+User = get_user_model()
 
 
 def is_superadmin(user):
@@ -138,7 +140,7 @@ def tenant_list(request):
         tenants = tenants.filter(
             Q(name__icontains=search_query)
             | Q(schema_name__icontains=search_query)
-            | Q(email__icontains=search_query)
+            | Q(phone__icontains=search_query)
         )
     # Pagination
     paginator = Paginator(tenants, 20)
@@ -187,7 +189,6 @@ def tenant_create(request):
     if request.method == "POST":
         name = request.POST.get("name")
         schema_name = request.POST.get("schema_name")
-        email = request.POST.get("email")
         phone = request.POST.get("phone")
         address = request.POST.get("address")
         domain_name = request.POST.get("domain")
@@ -197,7 +198,6 @@ def tenant_create(request):
             tenant = Client.objects.create(
                 name=name,
                 schema_name=schema_name,
-                email=email,
                 phone=phone,
                 address=address,
             )
@@ -205,35 +205,46 @@ def tenant_create(request):
             # Create domain
             Domain.objects.create(domain=domain_name, tenant=tenant, is_primary=True)
 
-            # Create tenant owner (admin user)
+            # Create tenant owner (admin user) in tenant schema
             from django.db import connection
+            from django.db import reset_queries
+            import logging
 
-            # Switch to tenant schema to create the user
-            connection.set_tenant(tenant)
+            logger = logging.getLogger(__name__)
 
-            # Create admin user for the tenant
-            owner_username = f"{schema_name}_admin"
-            owner_email = email if email else f"{owner_username}@example.com"
+            try:
+                # Switch to tenant schema to create the user
+                logger.info(f"Switching to tenant schema: {tenant.schema_name}")
+                connection.set_tenant(tenant)
 
-            # Generate a random password
-            import secrets
-            import string
+                # Force a database query to ensure the connection is in the right schema
+                reset_queries()
 
-            alphabet = string.ascii_letters + string.digits
-            random_password = "".join(secrets.choice(alphabet) for i in range(12))
+                # Verify we're in the correct schema
+                logger.info(f"Current schema: {connection.schema_name}")
 
-            # Create the owner user
-            owner = User.objects.create_user(
-                username=owner_username,
-                email=owner_email,
-                password=random_password,
-                role=User.Roles.ADMIN,
-                first_name="Admin",
-                last_name=name,
-            )
+                # Create admin user for the tenant
+                owner_username = f"{schema_name}_admin"
 
-            # Switch back to public schema
-            connection.set_schema_to_public()
+                # Generate a random password
+                random_password = "pos123456"
+
+                # Create the owner user in tenant schema
+                owner = User.objects.create_user(
+                    username=owner_username,
+                    password=random_password,
+                    role=User.Roles.ADMIN,
+                    first_name="Admin",
+                    last_name=name,
+                    phone=phone,
+                )
+                logger.info(
+                    f"User {owner_username} created in schema {connection.schema_name}"
+                )
+            finally:
+                # Always switch back to public schema
+                connection.set_schema_to_public()
+                logger.info(f"Switched back to public schema: {connection.schema_name}")
 
             messages.success(
                 request,
@@ -254,7 +265,6 @@ def tenant_edit(request, pk):
 
     if request.method == "POST":
         tenant.name = request.POST.get("name", tenant.name)
-        tenant.email = request.POST.get("email", tenant.email)
         tenant.phone = request.POST.get("phone", tenant.phone)
         tenant.address = request.POST.get("address", tenant.address)
         tenant.max_users = int(request.POST.get("max_users", tenant.max_users))
@@ -333,7 +343,7 @@ def user_list(request):
     if search_query:
         users = users.filter(
             Q(username__icontains=search_query)
-            | Q(email__icontains=search_query)
+            | Q(phone__icontains=search_query)
             | Q(first_name__icontains=search_query)
             | Q(last_name__icontains=search_query)
         )
@@ -372,7 +382,6 @@ def user_create(request):
     """Create new user"""
     if request.method == "POST":
         username = request.POST.get("username")
-        email = request.POST.get("email")
         password = request.POST.get("password")
         first_name = request.POST.get("first_name")
         last_name = request.POST.get("last_name")
@@ -382,7 +391,6 @@ def user_create(request):
         try:
             user = User.objects.create_user(
                 username=username,
-                email=email,
                 password=password,
                 first_name=first_name,
                 last_name=last_name,
@@ -409,7 +417,6 @@ def user_edit(request, pk):
     user = get_object_or_404(User, pk=pk)
 
     if request.method == "POST":
-        user.email = request.POST.get("email", user.email)
         user.first_name = request.POST.get("first_name", user.first_name)
         user.last_name = request.POST.get("last_name", user.last_name)
         user.role = request.POST.get("role", user.role)

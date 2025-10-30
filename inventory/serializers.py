@@ -254,7 +254,6 @@ class CustomerSerializer(serializers.ModelSerializer):
             "last_name",
             "full_name",
             "phone",
-            "email",
             "notes",
             "loyalty_points",
             "created_at",

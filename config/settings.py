@@ -74,8 +74,9 @@ DATABASE_ROUTERS = ("django_tenants.routers.TenantSyncRouter",)
 
 SHARED_APPS = (
     "django_tenants",
-    "accounts",
-    "manager",  # Admin panel app
+    "accounts",  # Client/Domain models - tenant metadata
+    "manager",  # SuperAdmin panel
+    "tenant_users",  # User model (will be in all schemas but that's okay for this architecture)
     "django.contrib.contenttypes",
     "django.contrib.auth",
     "django.contrib.sessions",
@@ -91,6 +92,10 @@ TENANT_APPS = ("inventory",)
 
 INSTALLED_APPS = list(SHARED_APPS) + list(TENANT_APPS)
 
+# AUTH_USER_MODEL for both admin panel and tenant operations
+# Note: Users will exist in all schemas (shared data model)
+# For isolation, you need schema-based access control in middleware/permissions
+AUTH_USER_MODEL = "tenant_users.User"
 
 TENANT_MODEL = "accounts.Client"
 TENANT_DOMAIN_MODEL = "accounts.Domain"
@@ -188,13 +193,18 @@ MEDIA_ROOT = BASE_DIR / "media"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-# Custom user model
-AUTH_USER_MODEL = "accounts.User"
+# Custom user model (moved to tenant_users app for proper isolation)
+# AUTH_USER_MODEL is already set above with TENANT_APPS
 
 # Authentication URLs
 LOGIN_URL = "/auth/login/"
 LOGIN_REDIRECT_URL = "/"
 LOGOUT_REDIRECT_URL = "/auth/login/"
+
+# Authentication backends
+AUTHENTICATION_BACKENDS = [
+    "accounts.authentication.TenantAwareAuthBackend",  # Custom tenant-aware auth only
+]
 
 # DRF / JWT configuration
 REST_FRAMEWORK = {
@@ -237,6 +247,7 @@ SPECTACULAR_SETTINGS = {
         {"name": "users", "description": "User management and roles"},
         {"name": "payments", "description": "Payment processing and history"},
         {"name": "suppliers", "description": "Supplier management"},
+        {"name": "categories", "description": "Product categories"},
         {"name": "products", "description": "Products & splitting"},
         {"name": "warehouses", "description": "Warehouse CRUD"},
         {"name": "stocks", "description": "Current stock levels"},
@@ -252,11 +263,6 @@ SPECTACULAR_SETTINGS = {
         {"name": "reports", "description": "Reporting and analytics"},
     ],
 }
-
-# Email backend
-EMAIL_BACKEND = os.getenv(
-    "EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend"
-)
 
 
 import socket

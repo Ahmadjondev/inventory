@@ -1,11 +1,5 @@
 from django.contrib import admin
-from .models import User, Client, Domain
-
-
-from django.contrib import admin
-from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from .models import (
-    User,
     Client,
     Domain,
     SubscriptionPlan,
@@ -18,16 +12,8 @@ from .models import (
 )
 
 
-@admin.register(User)
-class UserAdmin(BaseUserAdmin):
-    list_display = ("username", "email", "role", "is_staff", "is_active")
-    list_filter = ("role", "is_staff", "is_active")
-    fieldsets = BaseUserAdmin.fieldsets + (
-        ("Custom Fields", {"fields": ("role", "phone")}),
-    )
-    add_fieldsets = BaseUserAdmin.add_fieldsets + (
-        ("Custom Fields", {"fields": ("role", "phone")}),
-    )
+# Note: User model is now in tenant_users app (for proper isolation)
+# User admin is registered in tenant_users/admin.py
 
 
 @admin.register(Client)
@@ -41,7 +27,7 @@ class ClientAdmin(admin.ModelAdmin):
         "created_at",
     )
     list_filter = ("status", "on_trial")
-    search_fields = ("name", "schema_name", "email")
+    search_fields = ("name", "schema_name", "phone")
     readonly_fields = ("schema_name", "created_at", "updated_at")
 
 
@@ -99,7 +85,13 @@ class PaymentAdmin(admin.ModelAdmin):
 
 @admin.register(Announcement)
 class AnnouncementAdmin(admin.ModelAdmin):
-    list_display = ("title", "priority", "is_active", "created_by", "created_at")
+    list_display = (
+        "title",
+        "priority",
+        "is_active",
+        "created_by_username",
+        "created_at",
+    )
     list_filter = ("priority", "is_active")
     search_fields = ("title", "content")
     readonly_fields = ("created_at", "updated_at")

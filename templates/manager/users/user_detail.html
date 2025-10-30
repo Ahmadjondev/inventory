@@ -31,8 +31,8 @@
                 <p class="text-lg font-semibold text-gray-900">{{ user_obj.username }}</p>
             </div>
             <div>
-                <p class="text-sm text-gray-600">Email</p>
-                <p class="text-lg font-semibold text-gray-900">{{ user_obj.email }}</p>
+                <p class="text-sm text-gray-600">Phone</p>
+                <p class="text-lg font-semibold text-gray-900">{{ user_obj.phone|default:"N/A" }}</p>
             </div>
             <div>
                 <p class="text-sm text-gray-600">First Name</p>
@@ -41,10 +41,6 @@
             <div>
                 <p class="text-sm text-gray-600">Last Name</p>
                 <p class="text-lg font-semibold text-gray-900">{{ user_obj.last_name|default:"N/A" }}</p>
-            </div>
-            <div>
-                <p class="text-sm text-gray-600">Phone</p>
-                <p class="text-lg font-semibold text-gray-900">{{ user_obj.phone|default:"N/A" }}</p>
             </div>
             <div>
                 <p class="text-sm text-gray-600">Role</p>

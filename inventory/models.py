@@ -240,7 +240,6 @@ class Customer(TimeStampedModel):
     first_name = models.CharField(max_length=120)
     last_name = models.CharField(max_length=120, blank=True)
     phone = models.CharField(max_length=24, unique=True)
-    email = models.EmailField(blank=True)
     notes = models.TextField(blank=True)
     loyalty_points = models.PositiveIntegerField(default=0)
 

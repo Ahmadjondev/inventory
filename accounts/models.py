@@ -1,5 +1,4 @@
 from django.db import models
-from django.contrib.auth.models import AbstractUser
 from django_tenants.models import TenantMixin, DomainMixin
 from django.conf import settings
 from decimal import Decimal
@@ -22,7 +21,6 @@ class Client(TenantMixin):
     name = models.CharField(max_length=100)
     address = models.CharField(max_length=500, blank=True)
     phone = models.CharField(max_length=24, blank=True)
-    email = models.EmailField(blank=True)
 
     # Subscription-related fields
     status = models.CharField(
@@ -59,31 +57,8 @@ class Domain(DomainMixin):
     pass
 
 
-class User(AbstractUser):
-    class Roles(models.TextChoices):
-        SUPERADMIN = "superadmin", "SuperAdmin"
-        ADMIN = "admin", "Admin"
-        CASHIER = "cashier", "Cashier"
-        WAREHOUSE = "warehouse", "Warehouse"
-        ACCOUNTANT = "accountant", "Accountant"
-
-    role = models.CharField(
-        max_length=20,
-        choices=Roles.choices,
-        default=Roles.CASHIER,
-        help_text="Application role controlling access level",
-    )
-    phone = models.CharField(max_length=24, blank=True)
-
-    def __str__(self):
-        return f"{self.username} ({self.role})"
-
-    class Meta:
-        verbose_name = "User"
-        verbose_name_plural = "Users"
-        indexes = [
-            models.Index(fields=["role"]),
-        ]
+# NOTE: User model has been moved to tenant_users app for proper isolation!
+# Each tenant now has its own isolated set of users.
 
 
 class SubscriptionPlan(models.Model):
@@ -300,12 +275,9 @@ class Announcement(models.Model):
         Client, blank=True, related_name="announcements"
     )
 
-    created_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.SET_NULL,
-        null=True,
-        related_name="created_announcements",
-    )
+    # Store username as string instead of ForeignKey to avoid circular dependency
+    # between SHARED_APPS (accounts) and TENANT_APPS (tenant_users)
+    created_by_username = models.CharField(max_length=150, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -339,19 +311,11 @@ class SupportTicket(models.Model):
     tenant = models.ForeignKey(
         Client, on_delete=models.CASCADE, related_name="support_tickets"
     )
-    created_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.SET_NULL,
-        null=True,
-        related_name="created_tickets",
-    )
-    assigned_to = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="assigned_tickets",
-    )
+
+    # Store usernames as strings instead of ForeignKeys to avoid circular dependency
+    # between SHARED_APPS (accounts) and TENANT_APPS (tenant_users)
+    created_by_username = models.CharField(max_length=150, blank=True)
+    assigned_to_username = models.CharField(max_length=150, blank=True)
 
     ticket_number = models.CharField(max_length=50, unique=True)
     subject = models.CharField(max_length=255)

@@ -29,7 +29,7 @@ class CustomTenantMiddleware(BaseTenantMiddleware):
             # Use public schema for static/media files
             schema_name = get_public_schema_name()
             connection.set_schema(schema_name)
-
+            
             # Create a proper mock tenant
             class PublicTenant:
                 schema_name = get_public_schema_name()

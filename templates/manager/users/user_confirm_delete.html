@@ -22,7 +22,7 @@
         <div class="bg-gray-50 rounded-lg p-4 mb-6">
             <h3 class="font-semibold text-gray-900 mb-2">User Information:</h3>
             <p><span class="text-gray-600">Username:</span> <span class="font-semibold">{{ user_obj.username }}</span></p>
-            <p><span class="text-gray-600">Email:</span> <span class="font-semibold">{{ user_obj.email }}</span></p>
+            <p><span class="text-gray-600">Phone:</span> <span class="font-semibold">{{ user_obj.phone|default:"N/A" }}</span></p>
             <p><span class="text-gray-600">Role:</span> <span class="font-semibold">{{ user_obj.get_role_display }}</span></p>
         </div>
 
